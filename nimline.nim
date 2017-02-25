@@ -129,7 +129,7 @@ proc add(h: var LineHistory, s: string, force=false) =
   if h.tainted:
     h.queue[h.queue.len-1] = s
   else:
-    h.queue.addFirst s
+    h.queue.addLast s
 
 proc previous(h: var LineHistory): string =
   if h.queue.len == 0 or h.position <= 0:
