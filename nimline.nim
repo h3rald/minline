@@ -35,7 +35,7 @@ else:
 
   proc getchar*(): cint =
     var chars = newSeq[char](0)
-    return stdin.readChars(chars, 0, 1).ord.cint
+    return stdin.readChars(chars, 0, 1)[0].ord.cint
 
   proc putchar*(c: cint) =
     stdout.write(c.chr)
