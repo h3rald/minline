@@ -34,7 +34,8 @@ else:
     discard execCmd "stty </dev/tty " & TERMSETTINGS
 
   proc getchar*(): cint =
-    return stdin.readChar().ord.cint
+    var chars = newSeq[char](0)
+    return stdin.readChars(chars, 0, 1).ord.cint
 
   proc putchar*(c: cint) =
     stdout.write(c.chr)
@@ -483,17 +484,17 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
 proc password*(ed: var LineEditor, prompt=""): string =
   return ed.readLine(prompt, true)
  
-when isMainModule:
-  proc testChar() =
-    while true:
-      let a = getch().ord
-      echo "\n->", a
-      if a == 3:
-        termRestore()
-        quit(0)
-  proc testLineEditor() =
-    while true:
-      var ed = initEditor(historyFile = nil)
-      echo "---", ed.readLine("-> "), "---"
-
-  testChar()
+#when isMainModule:
+#  proc testChar() =
+#    while true:
+#      let a = getch().ord
+#      echo "\n->", a
+#      if a == 3:
+#        termRestore()
+#        quit(0)
+#  proc testLineEditor() =
+#    while true:
+#      var ed = initEditor(historyFile = nil)
+#      echo "---", ed.readLine("-> "), "---"
+#
+#  testChar()
