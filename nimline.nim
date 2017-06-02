@@ -217,7 +217,8 @@ proc clearLine*(ed: var LineEditor) =
   for i in ed.line.text:
     putchar(32)
   putchar(32)
-  stdout.cursorBackward(ed.line.text.len)
+  putchar(32)
+  stdout.cursorBackward(ed.line.text.len+1)
   ed.line.position = 0
   ed.line.text = ""
 
