@@ -263,10 +263,14 @@ proc clearLine*(ed: var LineEditor) =
   ed.line.text = ""
 
 proc goToStart*(ed: var LineEditor) =
+  if ed.line.position <= 0:
+    return
   stdout.cursorBackward(ed.line.position)
   ed.line.position = 0
 
 proc goToEnd*(ed: var LineEditor) =
+  if ed.line.full:
+    return
   let diff = ed.line.text.len - ed.line.position
   stdout.cursorForward(diff)
   ed.line.position = ed.line.text.len
