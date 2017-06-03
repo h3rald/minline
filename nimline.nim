@@ -6,39 +6,75 @@ import
   strutils,
   os
 
-# getch/putch implementations
-when defined(windows):
-   proc getchar*(): cint {.header: "<conio.h>", importc: "_getch".}
-   proc putchar*(c: cint): cint {.discardable, header: "<conio.h>", importc: "_putch".}
 
-   proc termSetup*() = 
-     discard
+### Start getCh implementation
+### Modified from https://github.com/6A/getch/blob/master/getch.nim
+when hostOS == "windows":
+  proc wgetch(): char {. header: "<conio.h>", importc: "getch" .}
+  proc wgetche(): char {. header: "<conio.h>", importc: "getche" .}
 
-   proc termSave*(): string = 
-     return ""
+  proc getCh*(e = false): char =
+    ## Immediately get the next character from stdin.
+    ## If `e` is true, the character will be echoed.
+    if e: wgetche() else: wgetch()
 
-   proc termRestore*() =
-     discard
 else:
-  import osproc
+  const
+    NCCS          = 20
+    TCSANOW       = 0
+    ISIG: uint    = 1
+    ICANON: uint  = 2
+    ECHO: uint    = 10
+    IEXTEN: uint  = 0o000000100000
 
-  proc termSetup*() =
-    discard execCmd "stty </dev/tty -icanon -echo -isig -iexten"
+  type termios = object
+    c_iflag*: uint
+    c_oflag*: uint
+    c_cflag*: uint
+    c_lflag*: uint
+    c_line*:  char
+    c_cc*:    array[NCCS, char]
 
-  proc termSave*(): string =
-    let res = execCmdEx "stty </dev/tty -g"
-    return res[0]
+  proc tcgetattr(f: int, t: ptr termios): void {. header: "<termios.h>", importc: "tcgetattr" .}
+  proc tcsetattr(f: int, s: int, t: ptr termios): void {. header: "<termios.h>", importc: "tcsetattr" .}
+  proc getchar(): char {.header: "<stdio.h>", importc: "getchar" .}
 
-  let TERMSETTINGS* = termSave()
-  proc termRestore*() =
-    discard execCmd "stty </dev/tty " & TERMSETTINGS
+  proc getCh*(e = false): char =
+    ## Immediately get the next character from stdin.
+    ## If `e` is true, the character will be echoed.
+    var
+      oldt: ptr termios = cast[ptr termios](alloc0(sizeof termios))
+      newt: ptr termios = cast[ptr termios](alloc0(sizeof termios))
 
-  proc getchar*(): cint =
-    var chars = newSeq[char](0)
-    return stdin.readChars(chars, 0, 1)[0].ord.cint
+    # Change terminal settings
+    tcgetattr(0, oldt)
 
-  proc putchar*(c: cint) =
-    stdout.write(c.chr)
+    newt.c_iflag = oldt.c_iflag
+    newt.c_oflag = oldt.c_oflag
+    newt.c_cflag = oldt.c_cflag
+    newt.c_lflag = oldt.c_lflag
+    newt.c_line= oldt.c_line
+    newt.c_cc = oldt.c_cc
+
+    newt.c_lflag = newt.c_lflag and (not ICANON) and (IEXTEN) and (ISIG)
+    newt.c_lflag = newt.c_lflag and (if e: ECHO else: not ECHO)
+
+    # Disable buffered IO
+    tcsetattr(0, TCSANOW, newt)
+
+    # Read next char
+    result = getchar()
+
+    # Restore terminal settings
+    tcsetattr(0, TCSANOW, oldt)
+
+### End getCh implementation
+
+proc putchr*(c: cint) =
+  stdout.write(c.chr)
+
+proc getchr*(): cint =
+  return getCh().ord
 
 # Types
 
@@ -152,7 +188,7 @@ proc deletePrevious*(ed: var LineEditor) =
   if not ed.line.empty:
     if ed.line.full:
       stdout.cursorBackward
-      putchar(32)
+      putchr(32)
       stdout.cursorBackward
       ed.line.position.dec
       ed.line.text = ed.line.text[0..ed.line.last-1]
@@ -160,7 +196,7 @@ proc deletePrevious*(ed: var LineEditor) =
       let rest = ed.line.toEnd & " "
       ed.back
       for i in rest:
-        putchar i.ord
+        putchr i.ord
       ed.line.text = ed.line.fromStart & ed.line.text[ed.line.position+1..ed.line.last]
       stdout.cursorBackward(rest.len)
   
@@ -169,27 +205,27 @@ proc deleteNext*(ed: var LineEditor) =
     if not ed.line.full:
       let rest = ed.line.toEnd[1..^1] & " "
       for c in rest:
-        putchar c.ord
+        putchr c.ord
       stdout.cursorBackward(rest.len)
       ed.line.text = ed.line.fromStart & ed.line.toEnd[1..^1]
 
 proc printChar*(ed: var LineEditor, c: int) =  
   if ed.line.full:
-    putchar(c.cint)
+    putchr(c.cint)
     ed.line.text &= c.chr
     ed.line.position += 1
   else:
     if ed.mode == mdInsert:
-      putchar(c.cint)
+      putchr(c.cint)
       let rest = ed.line.toEnd
       ed.line.text.insert($c.chr, ed.line.position)
       ed.line.position += 1
       for j in rest:
-        putchar(j.ord)
+        putchr(j.ord)
         ed.line.position += 1
       ed.back(rest.len)
     else: 
-      putchar(c.cint)
+      putchr(c.cint)
       ed.line.text[ed.line.position] = c.chr
       ed.line.position += 1
 
@@ -200,12 +236,12 @@ proc changeLine*(ed: var LineEditor, s: string) =
   if position > 0:
     stdout.cursorBackward(position)
   for c in s:
-    putchar(c.ord)
+    putchr(c.ord)
   ed.line.position = s.len
   ed.line.text = s
   if diff > 0:
     for i in 0.countup(diff-1):
-      putchar(32)
+      putchr(32)
     stdout.cursorBackward(diff)
 
 proc addToLineAtPosition(ed: var LineEditor, s: string) =
@@ -215,9 +251,9 @@ proc addToLineAtPosition(ed: var LineEditor, s: string) =
 proc clearLine*(ed: var LineEditor) =
   stdout.cursorBackward(ed.line.position+1)
   for i in ed.line.text:
-    putchar(32)
-  putchar(32)
-  putchar(32)
+    putchr(32)
+  putchr(32)
+  putchr(32)
   stdout.cursorBackward(ed.line.text.len+1)
   ed.line.position = 0
   ed.line.text = ""
@@ -301,7 +337,7 @@ proc completeLine*(ed: var LineEditor): int =
     ed.addToLineAtPosition(matches[0])
   else:
     return -1
-  var ch = getchar()
+  var ch = getchr()
   while ch == 9:
     n.inc
     if n < matches.len:
@@ -309,7 +345,7 @@ proc completeLine*(ed: var LineEditor): int =
       for i in 0.countup(diff-1 + word.len):
         ed.deletePrevious
       ed.addToLineAtPosition(matches[n])
-      ch = getchar()
+      ch = getchr()
     else:
       n = -1
   return ch
@@ -318,7 +354,6 @@ proc lineText*(ed: LineEditor): string =
   return ed.line.text
   
 proc initEditor*(mode = mdInsert, historySize = 256, historyFile: string = nil): LineEditor =
-  termSetup()
   result.mode = mode
   result.history = historyInit(historySize, historyFile)
 
@@ -359,7 +394,6 @@ KEYMAP["left"] = proc(ed: var LineEditor) =
 KEYMAP["right"] = proc(ed: var LineEditor) =
   ed.forward()
 KEYMAP["ctrl+c"] = proc(ed: var LineEditor) =
-  termRestore()
   quit(0)
 KEYMAP["ctrl+x"] = proc(ed: var LineEditor) =
   ed.clearLine()
@@ -427,7 +461,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
       c1 = c
       c = -1
     else:
-      c1 = getchar()
+      c1 = getchr()
     if c1 in {10, 13}:
       stdout.write("\n")
       ed.historyAdd()
@@ -437,7 +471,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
       KEYMAP["backspace"](ed)
     elif c1 in PRINTABLE:
       if hidechars:
-        putchar('*'.ord)
+        putchr('*'.ord)
         ed.line.text &= c1.chr
         ed.line.position.inc
       else:
@@ -447,7 +481,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
     elif c1 in ESCAPES:
       var s = newSeq[Key](0)
       s.add(c1)
-      let c2 = getchar()
+      let c2 = getchr()
       s.add(c2)
       if s == KEYSEQS["left"]:
         KEYMAP["left"](ed)
@@ -462,7 +496,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
       elif s == KEYSEQS["insert"]:
         KEYMAP["insert"](ed)
       elif c2 == 91:
-        let c3 = getchar()
+        let c3 = getchr()
         s.add(c3)
         if s == KEYSEQS["right"]:
           KEYMAP["right"](ed)
@@ -473,7 +507,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
         elif s == KEYSEQS["down"]:
           KEYMAP["down"](ed)
         elif c3 in {50, 51}:
-          let c4 = getchar()
+          let c4 = getchr()
           s.add(c4)
           if c4 == 126 and c3 == 50:
             KEYMAP["insert"](ed)
@@ -485,17 +519,17 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
 proc password*(ed: var LineEditor, prompt=""): string =
   return ed.readLine(prompt, true)
  
-#when isMainModule:
-#  proc testChar() =
-#    while true:
-#      let a = getch().ord
-#      echo "\n->", a
-#      if a == 3:
-#        termRestore()
-#        quit(0)
-#  proc testLineEditor() =
-#    while true:
-#      var ed = initEditor(historyFile = nil)
-#      echo "---", ed.readLine("-> "), "---"
-#
-#  testChar()
+when isMainModule:
+  #proc testChar() =
+  #  while true:
+  #    let a = getchr()
+  #    echo "\n->", a
+  #    if a == 3:
+  #      quit(0)
+  proc testLineEditor() =
+    var ed = initEditor(historyFile = nil)
+    while true:
+      echo "---", ed.readLine("-> "), "---"
+
+  #testChar()
+  testLineEditor()
