@@ -12,6 +12,7 @@ import
 when hostOS == "windows":
   proc wgetch(): char {. header: "<conio.h>", importc: "getch" .}
   proc wgetche(): char {. header: "<conio.h>", importc: "getche" .}
+  proc putchr(c: char): cint {.discardable, header: "<conio.h>", importc: "putch" .}
 
   proc getCh*(e = false): char =
     ## Immediately get the next character from stdin.
@@ -38,6 +39,7 @@ else:
   proc tcgetattr(f: int, t: ptr termios): void {. header: "<termios.h>", importc: "tcgetattr" .}
   proc tcsetattr(f: int, s: int, t: ptr termios): void {. header: "<termios.h>", importc: "tcsetattr" .}
   proc getchar(): char {.header: "<stdio.h>", importc: "getchar" .}
+  proc putchar(c: char): cint {.discardable, header: "<stdio.h>", importc: "putchar" .}
 
   proc getCh*(e = false): char =
     ## Immediately get the next character from stdin.
@@ -49,12 +51,12 @@ else:
     # Change terminal settings
     tcgetattr(0, oldt)
 
-    newt.c_iflag = oldt.c_iflag
-    newt.c_oflag = oldt.c_oflag
-    newt.c_cflag = oldt.c_cflag
-    newt.c_lflag = oldt.c_lflag
-    newt.c_line= oldt.c_line
-    newt.c_cc = oldt.c_cc
+    newt.c_iflag  = oldt.c_iflag
+    newt.c_oflag  = oldt.c_oflag
+    newt.c_cflag  = oldt.c_cflag
+    newt.c_lflag  = oldt.c_lflag
+    newt.c_line   = oldt.c_line
+    newt.c_cc     = oldt.c_cc
 
     newt.c_lflag = newt.c_lflag and (not ICANON) and (IEXTEN) and (ISIG)
     newt.c_lflag = newt.c_lflag and (if e: ECHO else: not ECHO)
@@ -67,11 +69,13 @@ else:
 
     # Restore terminal settings
     tcsetattr(0, TCSANOW, oldt)
+    dealloc(oldt)
+    dealloc(newt)
 
 ### End getCh implementation
 
 proc putchr*(c: cint) =
-  stdout.write(c.chr)
+  putchar(c.chr)
 
 proc getchr*(): cint =
   return getCh().ord
