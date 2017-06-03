@@ -327,7 +327,7 @@ proc historyFlush*(ed: var LineEditor) =
 
 proc completeLine*(ed: var LineEditor): int =
   if ed.completionCallback.isNil:
-    raise LineEditorError(msg: "Completion callback is not set")
+    return
   let compl = ed.completionCallback(ed)
   let position = ed.line.position
   let words = ed.line.fromStart.split(" ")
