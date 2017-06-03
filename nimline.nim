@@ -58,11 +58,12 @@ else:
     newt.c_line   = oldt.c_line
     newt.c_cc     = oldt.c_cc
 
-    newt.c_lflag = newt.c_lflag and (not ICANON) and (IEXTEN) and (ISIG)
+    newt.c_lflag = newt.c_lflag and (not ICANON) and (IEXTEN) and (not ISIG)
     newt.c_lflag = newt.c_lflag and (if e: ECHO else: not ECHO)
 
     # Disable buffered IO
     tcsetattr(0, TCSANOW, newt)
+    dealloc(newt)
 
     # Read next char
     result = getchar()
@@ -70,7 +71,6 @@ else:
     # Restore terminal settings
     tcsetattr(0, TCSANOW, oldt)
     dealloc(oldt)
-    dealloc(newt)
 
 ### End getCh implementation
 
@@ -459,6 +459,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
   stdout.write(prompt)
   ed.line = Line(text: "", position: 0)
   var c = -1 # Used to manage completions
+  var esc = false
   while true:
     var c1: int
     if c > 0:
@@ -466,11 +467,14 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
       c = -1
     else:
       c1 = getchr()
-    if c1 in {10, 13}:
+    if esc:
+      esc = false
+      continue
+    elif c1 in {10, 13}:
       stdout.write("\n")
       ed.historyAdd()
       ed.historyFlush()
-      return ed.line.text
+      return ed.line.text 
     elif c1 in {8, 127}:
       KEYMAP["backspace"](ed)
     elif c1 in PRINTABLE:
@@ -519,6 +523,14 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
             KEYMAP["delete"](ed)
     elif KEYMAP.hasKey(KEYNAMES[c1]):
       KEYMAP[KEYNAMES[c1]](ed)
+    else:
+      # Assuming unhandled two-values escape sequence; do nothing.
+      if esc:
+        esc = false
+        continue
+      else:
+        esc = true
+        continue
 
 proc password*(ed: var LineEditor, prompt=""): string =
   return ed.readLine(prompt, true)
