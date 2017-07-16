@@ -8,11 +8,15 @@ import
 
 system.addQuitProc(resetAttributes)
 
-proc putchr*(c: cint) =
-  stdout.write(c.chr)
+when defined(windows):
+   proc getchr*(): cint {.header: "<conio.h>", importc: "_getch".}
+   proc putchr*(c: cint): cint {.discardable, header: "<conio.h>", importc: "_putch".}
+else:
+  proc putchr*(c: cint) =
+    stdout.write(c.chr)
 
-proc getchr*(): cint =
-  return getch().ord
+  proc getchr*(): cint =
+    return getch().ord
 
 # Types
 
