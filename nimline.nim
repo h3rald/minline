@@ -343,6 +343,10 @@ KEYMAP["ctrl+b"] = proc(ed: var LineEditor) =
   ed.goToStart()
 KEYMAP["ctrl+e"] = proc(ed: var LineEditor) =
   ed.goToEnd()
+KEYMAP["home"] = proc(ed: var LineEditor) =
+  ed.goToStart()
+KEYMAP["end"] = proc(ed: var LineEditor) =
+  ed.goToEnd()
 
 # Key Names
 var KEYNAMES*: array[0..31, string]
@@ -382,6 +386,8 @@ when defined(windows):
   KEYSEQS["down"]       = @[224, 80]
   KEYSEQS["right"]      = @[224, 77]
   KEYSEQS["left"]       = @[224, 75]
+  KEYSEQS["home"]       = @[224, 71]
+  KEYSEQS["end"]        = @[224, 79]
   KEYSEQS["insert"]     = @[224, 82]
   KEYSEQS["delete"]     = @[224, 83]
 else:
@@ -389,6 +395,8 @@ else:
   KEYSEQS["down"]       = @[27, 91, 66]
   KEYSEQS["right"]      = @[27, 91, 67]
   KEYSEQS["left"]       = @[27, 91, 68]
+  KEYSEQS["home"]       = @[27, 91, 72]
+  KEYSEQS["end"]        = @[27, 91, 70]
   KEYSEQS["insert"]     = @[27, 91, 50, 126]
   KEYSEQS["delete"]     = @[27, 91, 51, 126]
 
@@ -437,6 +445,10 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
         KEYMAP["up"](ed)
       elif s == KEYSEQS["down"]:
         KEYMAP["down"](ed)
+      elif s == KEYSEQS["home"]:
+        KEYMAP["home"](ed)
+      elif s == KEYSEQS["end"]:
+        KEYMAP["end"](ed)
       elif s == KEYSEQS["delete"]:
         KEYMAP["delete"](ed)
       elif s == KEYSEQS["insert"]:
@@ -452,6 +464,10 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
           KEYMAP["up"](ed)
         elif s == KEYSEQS["down"]:
           KEYMAP["down"](ed)
+        elif s == KEYSEQS["home"]:
+          KEYMAP["home"](ed)
+        elif s == KEYSEQS["end"]:
+          KEYMAP["end"](ed)
         elif c3 in {50, 51}:
           let c4 = getchr()
           s.add(c4)
