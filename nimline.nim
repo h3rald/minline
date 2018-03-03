@@ -335,15 +335,25 @@ KEYMAP["down"] = proc(ed: var LineEditor) =
   ed.historyNext()
 KEYMAP["up"] = proc(ed: var LineEditor) =
   ed.historyPrevious()
+KEYMAP["ctrl+n"] = proc(ed: var LineEditor) =
+  ed.historyNext()
+KEYMAP["ctrl+p"] = proc(ed: var LineEditor) =
+  ed.historyPrevious()
 KEYMAP["left"] = proc(ed: var LineEditor) =
   ed.back()
 KEYMAP["right"] = proc(ed: var LineEditor) =
   ed.forward()
+KEYMAP["ctrl+b"] = proc(ed: var LineEditor) =
+  ed.back()
+KEYMAP["ctrl+f"] = proc(ed: var LineEditor) =
+  ed.forward()
 KEYMAP["ctrl+c"] = proc(ed: var LineEditor) =
   quit(0)
-KEYMAP["ctrl+x"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+d"] = proc(ed: var LineEditor) =
+  quit(0)
+KEYMAP["ctrl+u"] = proc(ed: var LineEditor) =
   ed.clearLine()
-KEYMAP["ctrl+b"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+a"] = proc(ed: var LineEditor) =
   ed.goToStart()
 KEYMAP["ctrl+e"] = proc(ed: var LineEditor) =
   ed.goToEnd()
