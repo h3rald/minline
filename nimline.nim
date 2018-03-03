@@ -16,7 +16,7 @@ else:
     stdout.write(c.chr)
 
   proc getchr*(): cint =
-    return getch().ord
+    return getch().ord.cint
 
 # Types
 
@@ -138,7 +138,7 @@ proc deletePrevious*(ed: var LineEditor) =
       let rest = ed.line.toEnd & " "
       ed.back
       for i in rest:
-        putchr i.ord
+        putchr i.ord.cint
       ed.line.text = ed.line.fromStart & ed.line.text[ed.line.position+1..ed.line.last]
       stdout.cursorBackward(rest.len)
   
@@ -147,7 +147,7 @@ proc deleteNext*(ed: var LineEditor) =
     if not ed.line.full:
       let rest = ed.line.toEnd[1..^1] & " "
       for c in rest:
-        putchr c.ord
+        putchr c.ord.cint
       stdout.cursorBackward(rest.len)
       ed.line.text = ed.line.fromStart & ed.line.toEnd[1..^1]
 
@@ -163,7 +163,7 @@ proc printChar*(ed: var LineEditor, c: int) =
       ed.line.text.insert($c.chr, ed.line.position)
       ed.line.position += 1
       for j in rest:
-        putchr(j.ord)
+        putchr(j.ord.cint)
         ed.line.position += 1
       ed.back(rest.len)
     else: 
@@ -178,7 +178,7 @@ proc changeLine*(ed: var LineEditor, s: string) =
   if position > 0:
     stdout.cursorBackward(position)
   for c in s:
-    putchr(c.ord)
+    putchr(c.ord.cint)
   ed.line.position = s.len
   ed.line.text = s
   if diff > 0:
@@ -188,7 +188,7 @@ proc changeLine*(ed: var LineEditor, s: string) =
 
 proc addToLineAtPosition(ed: var LineEditor, s: string) =
   for c in s:
-    ed.printChar(c.ord)
+    ed.printChar(c.ord.cint)
 
 proc clearLine*(ed: var LineEditor) =
   stdout.cursorBackward(ed.line.position+1)
@@ -429,7 +429,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
       KEYMAP["backspace"](ed)
     elif c1 in PRINTABLE:
       if hidechars:
-        putchr('*'.ord)
+        putchr('*'.ord.cint)
         ed.line.text &= c1.chr
         ed.line.position.inc
       else:
