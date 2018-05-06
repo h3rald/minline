@@ -203,8 +203,11 @@ proc clearLine*(ed: var LineEditor) =
 proc goToStart*(ed: var LineEditor) =
   if ed.line.position <= 0:
     return
-  stdout.cursorBackward(ed.line.position)
-  ed.line.position = 0
+  try:
+    stdout.cursorBackward(ed.line.position)
+    ed.line.position = 0
+  except:
+    discard
 
 proc goToEnd*(ed: var LineEditor) =
   if ed.line.full:
