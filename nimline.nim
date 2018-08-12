@@ -1,3 +1,6 @@
+## This module provides a simple, limited but fully-functional line editing library written in pure Nim.
+
+
 import
   critbits,
   terminal,
@@ -9,40 +12,44 @@ import
 system.addQuitProc(resetAttributes)
 
 when defined(windows):
-   proc getchr*(): cint {.header: "<conio.h>", importc: "_getch".}
-   proc putchr*(c: cint): cint {.discardable, header: "<conio.h>", importc: "_putch".}
+  proc putchr*(c: cint): cint {.discardable, header: "<conio.h>", importc: "_putch".}
+    ## Prints an ASCII character to stdout.
+  proc getchr*(): cint {.header: "<conio.h>", importc: "_getch".}
+    ## Retrieves an ASCII character from stdin.
 else:
   proc putchr*(c: cint) =
+    ## Prints an ASCII character to stdout.
     stdout.write(c.chr)
 
   proc getchr*(): cint =
+    ## Retrieves an ASCII character from stdin.
     return getch().ord.cint
 
 # Types
 
 type
-  Key* = int
-  KeySeq* = seq[Key]
-  KeyCallback* = proc(ed: var LineEditor)
-  LineError* = ref Exception
-  LineEditorError* = ref Exception
-  LineEditorMode = enum
+  Key* = int ## The ASCII code of a keyboard key.
+  KeySeq* = seq[Key] ## A sequence of one or more Keys.
+  KeyCallback* = proc(ed: var LineEditor) ## A proc to call that can modify the LineEditor.
+  LineError* = ref Exception ## A generic nimline error.
+  LineEditorError* = ref Exception ## An error occured in the LineEditor.
+  LineEditorMode* = enum ## The *mode* a LineEditor operates in (insert or replace).
     mdInsert
-    mdReplace
-  Line = object
-    text: string
-    position: int
-  LineHistory = object
-    file: string
-    tainted: bool
-    position: int
-    queue: Deque[string]
-    max: int
-  LineEditor* = object
-    completionCallback*: proc(ed: LineEditor): seq[string]
-    history: LineHistory
-    line: Line
-    mode: LineEditorMode
+    mdReplace 
+  Line* = object ## An object representing a line of text.
+    text: string 
+    position: int 
+  LineHistory* = object ## An object representing the history of all commands typed in a LineEditor.
+    file: string 
+    tainted: bool 
+    position: int 
+    queue: Deque[string] 
+    max: int 
+  LineEditor* = object ## An object representing a line editor, used to process text typed in the terminal.
+    completionCallback*: proc(ed: LineEditor): seq[string] 
+    history: LineHistory 
+    line: Line 
+    mode: LineEditorMode 
 
 # Internal Methods
 
@@ -73,12 +80,14 @@ proc toEnd(line: Line): string =
   return line.text[line.position..line.last]
 
 proc back*(ed: var LineEditor, n=1) =
+  ## Move the cursor back by **n** characters on the current line (unless the beginning of the line is reached).
   if ed.line.position <= 0:
     return
   stdout.cursorBackward(n)
   ed.line.position = ed.line.position - n
 
 proc forward*(ed: var LineEditor, n=1) = 
+  ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
   if ed.line.full:
     return
   stdout.cursorForward(n)
@@ -125,6 +134,7 @@ proc next(h: var LineHistory): string =
 # Public API
 
 proc deletePrevious*(ed: var LineEditor) =
+  ## Move the cursor to the left by one character (unless at the beginning of the line) and delete the existing character, if any.
   if ed.line.position <= 0:
     return
   if not ed.line.empty:
@@ -143,6 +153,7 @@ proc deletePrevious*(ed: var LineEditor) =
       stdout.cursorBackward(rest.len)
   
 proc deleteNext*(ed: var LineEditor) =
+  ## Move the cursor to the right by one character (unless at the end of the line) and delete the existing character, if any.
   if not ed.line.empty:
     if not ed.line.full:
       let rest = ed.line.toEnd[1..^1] & " "
@@ -152,6 +163,7 @@ proc deleteNext*(ed: var LineEditor) =
       ed.line.text = ed.line.fromStart & ed.line.toEnd[1..^1]
 
 proc printChar*(ed: var LineEditor, c: int) =  
+  ## Prints the character **c** to the current line. If in the middle of the line, the following characters are shifted right or replaced depending on the editor mode.
   if ed.line.full:
     putchr(c.cint)
     ed.line.text &= c.chr
@@ -172,6 +184,7 @@ proc printChar*(ed: var LineEditor, c: int) =
       ed.line.position += 1
 
 proc changeLine*(ed: var LineEditor, s: string) =
+  ## Replaces the contents of the current line with the string **s**.
   let text = ed.line.text
   let diff = text.len - s.len
   let position = ed.line.position
@@ -191,6 +204,7 @@ proc addToLineAtPosition(ed: var LineEditor, s: string) =
     ed.printChar(c.ord.cint)
 
 proc clearLine*(ed: var LineEditor) =
+  ## Clears the contents of the current line and reset the cursor position to the beginning of the line.
   stdout.cursorBackward(ed.line.position+1)
   for i in ed.line.text:
     putchr(32)
@@ -201,6 +215,7 @@ proc clearLine*(ed: var LineEditor) =
   ed.line.text = ""
 
 proc goToStart*(ed: var LineEditor) =
+  ## Move the cursor to the beginning of the line.
   if ed.line.position <= 0:
     return
   try:
@@ -210,19 +225,21 @@ proc goToStart*(ed: var LineEditor) =
     discard
 
 proc goToEnd*(ed: var LineEditor) =
+  ## Move the cursor to the end of the line.
   if ed.line.full:
     return
   let diff = ed.line.text.len - ed.line.position
   stdout.cursorForward(diff)
   ed.line.position = ed.line.text.len
 
-proc historyInit*(size = 256, historyFile: string = nil): LineHistory =
-  result.file = historyFile
+proc historyInit*(size = 256, file: string = nil): LineHistory =
+  ## Creates a new **LineHistory** object with the specified **size** and **file**.
+  result.file = file
   result.queue = initDeque[string](size)
   result.position = 0
   result.tainted = false
   result.max = size
-  if historyFile.isNil:
+  if file.isNil:
     return
   if result.file.fileExists:
     let lines = result.file.readFile.split("\n")
@@ -234,12 +251,15 @@ proc historyInit*(size = 256, historyFile: string = nil): LineHistory =
     result.file.writeFile("")
 
 proc historyAdd*(ed: var LineEditor, force = false) =
+  ## Adds the current editor line to the history. If **force** is set to **true**, the line will be added even if it's blank.
   ed.history.add ed.line.text, force
   if ed.history.file.isNil:
     return
   ed.history.file.writeFile(toSeq(ed.history.queue.items).join("\n"))
 
 proc historyPrevious*(ed: var LineEditor) =
+  ## Replaces the contents of the current line with the previous line stored in the history (if any).
+  ## The current line will be added to the history and the hisory will be marked as *tainted*.
   let s = ed.history.previous
   if s.isNil:
     return
@@ -256,17 +276,62 @@ proc historyPrevious*(ed: var LineEditor) =
     ed.changeLine(s)
   
 proc historyNext*(ed: var LineEditor) =
+  ## Replaces the contents of the current line with the following line stored in the history (if any).
   let s = ed.history.next
   if s.isNil:
     return
   ed.changeLine(s)
 
 proc historyFlush*(ed: var LineEditor) =
+  ## If there is at least one entry in the history, it sets the position of the cursor to the last element and sets the **tainted** flag to **false**.
   if ed.history.queue.len > 0:
     ed.history.position = ed.history.queue.len
     ed.history.tainted = false
 
 proc completeLine*(ed: var LineEditor): int =
+  ## If a **completionCallback** proc has been specified for the current editor, attempts to auto-complete the current line by running **completionProc**
+  ## to return a list of possible values. It is possible to cycle through the matches by pressing the same key that triggered this proc.
+  ##
+  ## The matches provided will be filtered based on the contents of the line when this proc was first triggered. If a match starts with the contents of the line, it
+  ## will be displayed.
+  ##
+  ## The following is a real-world example of a **completionCallback** used to complete the last word on the line with valid file paths.
+  ##
+  ## .. code-block:: nim
+  ##   import sequtils, strutils, ospath
+  ##
+  ##   editor.completionCallback = proc(ed: LineEditor): seq[string] =
+  ##     var words = ed.lineText.split(" ")
+  ##     var word: string
+  ##     if words.len == 0:
+  ##       word = ed.lineText
+  ##     else:
+  ##       word = words[words.len-1]
+  ##     var f = word[1..^1]
+  ##     if f == "":
+  ##       f = getCurrentDir().replace("\\", "/")  
+  ##       return toSeq(walkDir(f, true))
+  ##         .mapIt("\"$1" % it.path.replace("\\", "/"))
+  ##     elif f.dirExists:
+  ##       f = f.replace("\\", "/")
+  ##       if f[f.len-1] != '/':
+  ##         f = f & "/"
+  ##       return toSeq(walkDir(f, true))
+  ##         .mapIt("\"$1$2" % [f, it.path.replace("\\", "/")])
+  ##     else:
+  ##       var dir: string
+  ##       if f.contains("/") or dir.contains("\\"):
+  ##         dir = f.parentDir
+  ##         let file = f.extractFileName
+  ##         return toSeq(walkDir(dir, true))
+  ##           .filterIt(it.path.toLowerAscii.startsWith(file.toLowerAscii))
+  ##           .mapIt("\"$1/$2" % [dir, it.path.replace("\\", "/")])
+  ##       else:
+  ##         dir = getCurrentDir()
+  ##         return toSeq(walkDir(dir, true))
+  ##           .filterIt(it.path.toLowerAscii.startsWith(f.toLowerAscii))
+  ##           .mapIt("\"$1" % [it.path.replace("\\", "/")])
+  ##
   if ed.completionCallback.isNil:
     return
   let compl = ed.completionCallback(ed)
@@ -300,70 +365,28 @@ proc completeLine*(ed: var LineEditor): int =
   return ch
 
 proc lineText*(ed: LineEditor): string =
+  ## Returns the contents of the current line.
   return ed.line.text
   
 proc initEditor*(mode = mdInsert, historySize = 256, historyFile: string = nil): LineEditor =
+  ## Creates a **LineEditor** object.
   result.mode = mode
   result.history = historyInit(historySize, historyFile)
 
 # Character sets
 const
-  CTRL*        = {0 .. 31}
-  DIGIT*       = {48 .. 57}
-  LETTER*      = {65 .. 122}
-  UPPERLETTER* = {65 .. 90}
-  LOWERLETTER* = {97 .. 122}
-  PRINTABLE*   = {32 .. 126}
+  CTRL*        = {0 .. 31}    ## Control characters.
+  DIGIT*       = {48 .. 57}   ## Digits.
+  LETTER*      = {65 .. 122}  ## Letters.
+  UPPERLETTER* = {65 .. 90}   ## Uppercase letters.
+  LOWERLETTER* = {97 .. 122}  ## Lowercase letters.
+  PRINTABLE*   = {32 .. 126}  ## Printable characters.
 when defined(windows):
   const
-    ESCAPES* = {0, 22, 224}
+    ESCAPES* = {0, 22, 224}   ## Escape characters.
 else:
   const
-    ESCAPES* = {27}
-
-
-# Key Mappings
-var KEYMAP*: CritBitTree[KeyCallBack]
-
-KEYMAP["backspace"] = proc(ed: var LineEditor) =
-  ed.deletePrevious()
-KEYMAP["delete"] = proc(ed: var LineEditor) =
-  ed.deleteNext()
-KEYMAP["insert"] = proc(ed: var LineEditor) =
-  if ed.mode == mdInsert:
-    ed.mode = mdReplace
-  else:
-    ed.mode = mdInsert
-KEYMAP["down"] = proc(ed: var LineEditor) =
-  ed.historyNext()
-KEYMAP["up"] = proc(ed: var LineEditor) =
-  ed.historyPrevious()
-KEYMAP["ctrl+n"] = proc(ed: var LineEditor) =
-  ed.historyNext()
-KEYMAP["ctrl+p"] = proc(ed: var LineEditor) =
-  ed.historyPrevious()
-KEYMAP["left"] = proc(ed: var LineEditor) =
-  ed.back()
-KEYMAP["right"] = proc(ed: var LineEditor) =
-  ed.forward()
-KEYMAP["ctrl+b"] = proc(ed: var LineEditor) =
-  ed.back()
-KEYMAP["ctrl+f"] = proc(ed: var LineEditor) =
-  ed.forward()
-KEYMAP["ctrl+c"] = proc(ed: var LineEditor) =
-  quit(0)
-KEYMAP["ctrl+d"] = proc(ed: var LineEditor) =
-  quit(0)
-KEYMAP["ctrl+u"] = proc(ed: var LineEditor) =
-  ed.clearLine()
-KEYMAP["ctrl+a"] = proc(ed: var LineEditor) =
-  ed.goToStart()
-KEYMAP["ctrl+e"] = proc(ed: var LineEditor) =
-  ed.goToEnd()
-KEYMAP["home"] = proc(ed: var LineEditor) =
-  ed.goToStart()
-KEYMAP["end"] = proc(ed: var LineEditor) =
-  ed.goToEnd()
+    ESCAPES* = {27}           ## Escape characters.
 
 # Key Names
 var KEYNAMES*: array[0..31, string]
@@ -417,8 +440,56 @@ else:
   KEYSEQS["insert"]     = @[27, 91, 50, 126]
   KEYSEQS["delete"]     = @[27, 91, 51, 126]
 
+# Key Mappings
+var KEYMAP*: CritBitTree[KeyCallBack]
+
+KEYMAP["backspace"] = proc(ed: var LineEditor) =
+  ed.deletePrevious()
+KEYMAP["delete"] = proc(ed: var LineEditor) =
+  ed.deleteNext()
+KEYMAP["insert"] = proc(ed: var LineEditor) =
+  if ed.mode == mdInsert:
+    ed.mode = mdReplace
+  else:
+    ed.mode = mdInsert
+KEYMAP["down"] = proc(ed: var LineEditor) =
+  ed.historyNext()
+KEYMAP["up"] = proc(ed: var LineEditor) =
+  ed.historyPrevious()
+KEYMAP["ctrl+n"] = proc(ed: var LineEditor) =
+  ed.historyNext()
+KEYMAP["ctrl+p"] = proc(ed: var LineEditor) =
+  ed.historyPrevious()
+KEYMAP["left"] = proc(ed: var LineEditor) =
+  ed.back()
+KEYMAP["right"] = proc(ed: var LineEditor) =
+  ed.forward()
+KEYMAP["ctrl+b"] = proc(ed: var LineEditor) =
+  ed.back()
+KEYMAP["ctrl+f"] = proc(ed: var LineEditor) =
+  ed.forward()
+KEYMAP["ctrl+c"] = proc(ed: var LineEditor) =
+  quit(0)
+KEYMAP["ctrl+d"] = proc(ed: var LineEditor) =
+  quit(0)
+KEYMAP["ctrl+u"] = proc(ed: var LineEditor) =
+  ed.clearLine()
+KEYMAP["ctrl+a"] = proc(ed: var LineEditor) =
+  ed.goToStart()
+KEYMAP["ctrl+e"] = proc(ed: var LineEditor) =
+  ed.goToEnd()
+KEYMAP["home"] = proc(ed: var LineEditor) =
+  ed.goToStart()
+KEYMAP["end"] = proc(ed: var LineEditor) =
+  ed.goToEnd()
 
 proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
+  ## High-level proc to be used instead of **stdin.readLine** to read a line from standard input using the specified **LineEditor** object.
+  ##
+  ## Note that:
+  ## * **prompt** is a string (that *cannot* contain escape codes, so it cannot be colored) that will be prepended at the start of the line and
+  ##   not included in the contents of the line itself.
+  ## * If **hidechars** is set to **true**, asterisks will be printed to stdout instead of the characters entered by the user.
   stdout.write(prompt)
   ed.line = Line(text: "", position: 0)
   var c = -1 # Used to manage completions
@@ -504,6 +575,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
         continue
 
 proc password*(ed: var LineEditor, prompt=""): string =
+  ## Convenience method to use instead of readline to hide the characters inputed by the user.
   return ed.readLine(prompt, true)
  
 when isMainModule:
