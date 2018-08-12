@@ -20,6 +20,13 @@
 ## .. code-block:: nim
 ##    ed.completionCallback = proc(ed: LineEditor): seq[string] =
 ##      return @["copy", "list", "delete", "move", "remove"]
+##
+## **Note** When compared to the readline or linenoise libraries, this module has the following limitations:
+##
+## * It is only possible to edit one line of text at a time. When using the **readLine** method, it will not be possible to physically go to the next line (this simplifies things a bit...).
+## * No UTF8 support, only ASCII characters are supported.
+## * No support for colorized output.
+## * Only limited support for Emacs keybindings, no support for Vi mode and Vi keybindings.
 
 import
   critbits,
