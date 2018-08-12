@@ -1,5 +1,25 @@
 ## This module provides a simple, limited but fully-functional line editing library written in pure Nim.
-
+##
+## To use this library, you must first initialize a **LineEditor** object using the **initEditor** method,
+## and then use the **readLine** method to capture standard input instead of **stdout.readLine**:
+##
+## .. code-block:: nim
+##    var ed = initEditor(historyFile = "history.txt")
+##    while true:
+##      let str = ed.readLine("-> ")
+##      echo "You typed: ", str
+##
+## Optionally, you can also configure custom key bindings for keys and key sequences:
+##
+## .. code-block:: nim
+##    KEYMAP["ctrl+k"] = proc(ed: var LineEditor) =
+##      ed.clearLine()
+##
+## Additionally, you can also configure a **completionCallback** proc to trigger auto-completion by pressing TAB:
+##
+## .. code-block:: nim
+##    ed.completionCallback = proc(ed: LineEditor): seq[string] =
+##      return @["copy", "list", "delete", "move", "remove"]
 
 import
   critbits,
@@ -30,7 +50,7 @@ else:
 type
   Key* = int ## The ASCII code of a keyboard key.
   KeySeq* = seq[Key] ## A sequence of one or more Keys.
-  KeyCallback* = proc(ed: var LineEditor) ## A proc to call that can modify the LineEditor.
+  KeyCallback* = proc(ed: var LineEditor) ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
   LineError* = ref Exception ## A generic nimline error.
   LineEditorError* = ref Exception ## An error occured in the LineEditor.
   LineEditorMode* = enum ## The *mode* a LineEditor operates in (insert or replace).
@@ -300,7 +320,7 @@ proc completeLine*(ed: var LineEditor): int =
   ## .. code-block:: nim
   ##   import sequtils, strutils, ospath
   ##
-  ##   editor.completionCallback = proc(ed: LineEditor): seq[string] =
+  ##   ed.completionCallback = proc(ed: LineEditor): seq[string] =
   ##     var words = ed.lineText.split(" ")
   ##     var word: string
   ##     if words.len == 0:
@@ -389,7 +409,37 @@ else:
     ESCAPES* = {27}           ## Escape characters.
 
 # Key Names
-var KEYNAMES*: array[0..31, string]
+var KEYNAMES*: array[0..31, string] ## The following strings can be used in keymaps instead of the correspinding ASCII codes:
+##
+## .. code-block:: nim
+##    KEYNAMES[1]    =    "ctrl+a"
+##    KEYNAMES[2]    =    "ctrl+b"
+##    KEYNAMES[3]    =    "ctrl+c"
+##    KEYNAMES[4]    =    "ctrl+d"
+##    KEYNAMES[5]    =    "ctrl+e"
+##    KEYNAMES[6]    =    "ctrl+f"
+##    KEYNAMES[7]    =    "ctrl+g"
+##    KEYNAMES[8]    =    "ctrl+h"
+##    KEYNAMES[9]    =    "ctrl+i"
+##    KEYNAMES[9]    =    "tab"
+##    KEYNAMES[10]   =    "ctrl+j"
+##    KEYNAMES[11]   =    "ctrl+k"
+##    KEYNAMES[12]   =    "ctrl+l"
+##    KEYNAMES[13]   =    "ctrl+m"
+##    KEYNAMES[14]   =    "ctrl+n"
+##    KEYNAMES[15]   =    "ctrl+o"
+##    KEYNAMES[16]   =    "ctrl+p"
+##    KEYNAMES[17]   =    "ctrl+q"
+##    KEYNAMES[18]   =    "ctrl+r"
+##    KEYNAMES[19]   =    "ctrl+s"
+##    KEYNAMES[20]   =    "ctrl+t"
+##    KEYNAMES[21]   =    "ctrl+u"
+##    KEYNAMES[22]   =    "ctrl+v"
+##    KEYNAMES[23]   =    "ctrl+w"
+##    KEYNAMES[24]   =    "ctrl+x"
+##    KEYNAMES[25]   =    "ctrl+y"
+##    KEYNAMES[26]   =    "ctrl+z"
+
 KEYNAMES[1]    =    "ctrl+a"
 KEYNAMES[2]    =    "ctrl+b"
 KEYNAMES[3]    =    "ctrl+c"
@@ -419,7 +469,17 @@ KEYNAMES[25]   =    "ctrl+y"
 KEYNAMES[26]   =    "ctrl+z"
 
 # Key Sequences
-var KEYSEQS*: CritBitTree[KeySeq]
+var KEYSEQS*: CritBitTree[KeySeq] ## The following key sequences are defined and are used internally by **LineEditor**:
+##
+## .. code-block:: nim
+##    KEYSEQS["up"]         = @[27, 91, 65]      # Windows: @[224, 72]
+##    KEYSEQS["down"]       = @[27, 91, 66]      # Windows: @[224, 80]
+##    KEYSEQS["right"]      = @[27, 91, 67]      # Windows: @[224, 77]
+##    KEYSEQS["left"]       = @[27, 91, 68]      # Windows: @[224, 75]
+##    KEYSEQS["home"]       = @[27, 91, 72]      # Windows: @[224, 71]
+##    KEYSEQS["end"]        = @[27, 91, 70]      # Windows: @[224, 79]
+##    KEYSEQS["insert"]     = @[27, 91, 50, 126] # Windows: @[224, 82]
+##    KEYSEQS["delete"]     = @[27, 91, 51, 126] # Windows: @[224, 83]
 
 when defined(windows):
   KEYSEQS["up"]         = @[224, 72]
@@ -441,7 +501,26 @@ else:
   KEYSEQS["delete"]     = @[27, 91, 51, 126]
 
 # Key Mappings
-var KEYMAP*: CritBitTree[KeyCallBack]
+var KEYMAP*: CritBitTree[KeyCallBack] ## The following key mappings are configured by default:
+##
+## * backspace: **deletePrevious**
+## * delete: **deleteNext**
+## * insert: *toggle editor mode*
+## * down: **historyNext**
+## * up: **historyPrevious**
+## * ctrl+n: **historyNext**
+## * ctrl+p: **historyPrevious**
+## * left: **back**
+## * right: **forward**
+## * ctrl+b: **back**
+## * ctrl+f: **forward**
+## * ctrl+c: *quits the program*
+## * ctrl+d: *quits the program*
+## * ctrl+u: **clearLine**
+## * ctrl+a: **goToStart**
+## * ctrl+e: **goToEnd**
+## * home: **goToStart**
+## * end: **goToEnd**
 
 KEYMAP["backspace"] = proc(ed: var LineEditor) =
   ed.deletePrevious()
@@ -575,7 +654,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
         continue
 
 proc password*(ed: var LineEditor, prompt=""): string =
-  ## Convenience method to use instead of readline to hide the characters inputed by the user.
+  ## Convenience method to use instead of **readLine** to hide the characters inputed by the user.
   return ed.readLine(prompt, true)
  
 when isMainModule:
@@ -585,10 +664,11 @@ when isMainModule:
   #    echo "\n->", a
   #    if a == 3:
   #      quit(0)
+  #
+  #testChar()
   proc testLineEditor() =
     var ed = initEditor(historyFile = nil)
     while true:
       echo "---", ed.readLine("-> "), "---"
 
-  #testChar()
   testLineEditor()
