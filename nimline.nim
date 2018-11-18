@@ -148,13 +148,13 @@ proc add(h: var LineHistory, s: string, force=false) =
 
 proc previous(h: var LineHistory): string =
   if h.queue.len == 0 or h.position <= 0:
-    return nil
+    return ""
   h.position.dec
   result = h.queue[h.position]
 
 proc next(h: var LineHistory): string =
   if h.queue.len == 0 or h.position >= h.queue.len-1:
-    return nil
+    return ""
   h.position.inc
   result = h.queue[h.position]
 
@@ -259,14 +259,14 @@ proc goToEnd*(ed: var LineEditor) =
   stdout.cursorForward(diff)
   ed.line.position = ed.line.text.len
 
-proc historyInit*(size = 256, file: string = nil): LineHistory =
+proc historyInit*(size = 256, file: string = ""): LineHistory =
   ## Creates a new **LineHistory** object with the specified **size** and **file**.
   result.file = file
   result.queue = initDeque[string](size)
   result.position = 0
   result.tainted = false
   result.max = size
-  if file.isNil:
+  if file == "":
     return
   if result.file.fileExists:
     let lines = result.file.readFile.split("\n")
@@ -280,7 +280,7 @@ proc historyInit*(size = 256, file: string = nil): LineHistory =
 proc historyAdd*(ed: var LineEditor, force = false) =
   ## Adds the current editor line to the history. If **force** is set to **true**, the line will be added even if it's blank.
   ed.history.add ed.line.text, force
-  if ed.history.file.isNil:
+  if ed.history.file == "":
     return
   ed.history.file.writeFile(toSeq(ed.history.queue.items).join("\n"))
 
@@ -288,7 +288,7 @@ proc historyPrevious*(ed: var LineEditor) =
   ## Replaces the contents of the current line with the previous line stored in the history (if any).
   ## The current line will be added to the history and the hisory will be marked as *tainted*.
   let s = ed.history.previous
-  if s.isNil:
+  if s == "":
     return
   let pos = ed.history.position
   var current: int
@@ -305,7 +305,7 @@ proc historyPrevious*(ed: var LineEditor) =
 proc historyNext*(ed: var LineEditor) =
   ## Replaces the contents of the current line with the following line stored in the history (if any).
   let s = ed.history.next
-  if s.isNil:
+  if s == "":
     return
   ed.changeLine(s)
 
@@ -395,7 +395,7 @@ proc lineText*(ed: LineEditor): string =
   ## Returns the contents of the current line.
   return ed.line.text
   
-proc initEditor*(mode = mdInsert, historySize = 256, historyFile: string = nil): LineEditor =
+proc initEditor*(mode = mdInsert, historySize = 256, historyFile: string = ""): LineEditor =
   ## Creates a **LineEditor** object.
   result.mode = mode
   result.history = historyInit(historySize, historyFile)
@@ -674,7 +674,7 @@ when isMainModule:
   #
   #testChar()
   proc testLineEditor() =
-    var ed = initEditor(historyFile = nil)
+    var ed = initEditor(historyFile = "")
     while true:
       echo "---", ed.readLine("-> "), "---"
 
