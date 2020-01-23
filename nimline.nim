@@ -649,7 +649,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
             KEYMAP["insert"](ed)
           elif c4 == 126 and c3 == 51:
             KEYMAP["delete"](ed)
-    elif KEYMAP.hasKey(KEYNAMES[c1]):
+    elif c1 in CTRL and KEYMAP.hasKey(KEYNAMES[c1]):
       KEYMAP[KEYNAMES[c1]](ed)
     else:
       # Assuming unhandled two-values escape sequence; do nothing.
