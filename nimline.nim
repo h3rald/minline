@@ -74,6 +74,7 @@ type
     max: int 
   LineEditor* = object ## An object representing a line editor, used to process text typed in the terminal.
     completionCallback*: proc(ed: LineEditor): seq[string] 
+    newLineCallback*: proc(ed: var LineEditor, prompt: string, c: int): string
     history: LineHistory 
     line: Line 
     mode: LineEditorMode 
@@ -591,10 +592,15 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
       esc = false
       continue
     elif c1 in {10, 13}:
-      stdout.write("\n")
-      ed.historyAdd()
-      ed.historyFlush()
-      return ed.line.text 
+      if not ed.newLineCallback.isNil:
+        let line = ed.newLineCallback(ed, prompt, c1)
+        if line != "":
+          return line
+      else:
+        stdout.write("\n")
+        ed.historyAdd()
+        ed.historyFlush()
+        return ed.line.text 
     elif c1 in {8, 127}:
       KEYMAP["backspace"](ed)
     elif c1 in PRINTABLE:
@@ -675,6 +681,18 @@ when isMainModule:
   #testChar()
   proc testLineEditor() =
     var ed = initEditor(historyFile = "")
+    ed.newLineCallback = proc(ed: var LineEditor, prompt: string, c: int): string =
+      let lpar = ed.line.text.count("(")
+      let rpar = ed.line.text.count(")")
+      if (lpar != rpar):
+        #ed.line.text &= c.chr
+        stdout.write("\n" & prompt & " ... ")
+        return ""
+      else:
+        stdout.write("\n")
+        ed.historyAdd()
+        ed.historyFlush()
+        return ed.line.text 
     while true:
       echo "---", ed.readLine("-> "), "---"
 
