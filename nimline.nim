@@ -76,7 +76,8 @@ type
     completionCallback*: proc(ed: LineEditor): seq[string] 
     newLineCallback*: proc(ed: var LineEditor, prompt: string, c: int): string
     history: LineHistory 
-    line: Line 
+    lines: seq[Line]
+    currentLine: int
     mode: LineEditorMode 
 
 # Internal Methods
@@ -106,6 +107,10 @@ proc toEnd(line: Line): string =
   if line.empty:
     return ""
   return line.text[line.position..line.last]
+
+proc line*(ed: var LineEditor): var Line =
+  # TODO: Docs
+  return ed.lines[ed.currentLine]
 
 proc back*(ed: var LineEditor, n=1) =
   ## Move the cursor back by **n** characters on the current line (unless the beginning of the line is reached).
@@ -392,12 +397,25 @@ proc completeLine*(ed: var LineEditor): int =
       n = -1
   return ch
 
-proc lineText*(ed: LineEditor): string =
+proc lineText*(ed: var LineEditor): string =
   ## Returns the contents of the current line.
   return ed.line.text
+
+proc text*(ed: var LineEditor): string =
+  ## Returns the contents of all lines.
+  result = ed.lines.mapIt(it.text).join("\n")
+  echo "**"  & result & "**"
+
+proc newLine*(ed: var LineEditor) =
+  ## TODO: docs
+  var line = Line(text: "", position: 0)
+  ed.lines.add(line)
+  ed.currentLine = ed.lines.len-1
   
 proc initEditor*(mode = mdInsert, historySize = 256, historyFile: string = ""): LineEditor =
   ## Creates a **LineEditor** object.
+  result.lines = newSeq[Line](0)
+  result.currentLine = 0
   result.mode = mode
   result.history = historyInit(historySize, historyFile)
 
@@ -578,7 +596,8 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
   ##   not included in the contents of the line itself.
   ## * If **hidechars** is set to **true**, asterisks will be printed to stdout instead of the characters entered by the user.
   stdout.write(prompt)
-  ed.line = Line(text: "", position: 0)
+  ed.lines = newSeq[Line](0)
+  ed.newLine()
   var c = -1 # Used to manage completions
   var esc = false
   while true:
@@ -597,10 +616,10 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
         if line != "":
           return line
       else:
-        stdout.write("\n")
+        ed.printChar(c1)
         ed.historyAdd()
         ed.historyFlush()
-        return ed.line.text 
+        return ed.lines.pop().text
     elif c1 in {8, 127}:
       KEYMAP["backspace"](ed)
     elif c1 in PRINTABLE:
@@ -682,17 +701,20 @@ when isMainModule:
   proc testLineEditor() =
     var ed = initEditor(historyFile = "")
     ed.newLineCallback = proc(ed: var LineEditor, prompt: string, c: int): string =
-      let lpar = ed.line.text.count("(")
-      let rpar = ed.line.text.count(")")
+      ed.printChar(c)
+      let lpar = ed.text.count("(")
+      let rpar = ed.text.count(")")
       if (lpar != rpar):
-        #ed.line.text &= c.chr
         stdout.write("\n" & prompt & " ... ")
+        ed.newLine()
         return ""
       else:
         stdout.write("\n")
         ed.historyAdd()
         ed.historyFlush()
-        return ed.line.text 
+        let text = ed.text
+        ed.lines = newSeq[Line](0)
+        return text
     while true:
       echo "---", ed.readLine("-> "), "---"
 
