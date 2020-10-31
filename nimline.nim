@@ -34,9 +34,10 @@ import
   deques,
   sequtils,
   strutils,
+  std/exitprocs,
   os
 
-system.addQuitProc(resetAttributes)
+addExitProc(resetAttributes)
 
 when defined(windows):
   proc putchr*(c: cint): cint {.discardable, header: "<conio.h>", importc: "_putch".}
