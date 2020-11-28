@@ -45,12 +45,14 @@ when defined(windows):
   proc getchr*(): cint {.header: "<conio.h>", importc: "_getch".}
     ## Retrieves an ASCII character from stdin.
 else:
-  proc putchr*(c: cint) =
+  proc putchr*(c: cint) {.header: "stdio.h", importc: "putchar"} =
     ## Prints an ASCII character to stdout.
     stdout.write(c.chr)
+    stdout.flushFile()
 
   proc getchr*(): cint =
     ## Retrieves an ASCII character from stdin.
+    stdout.flushFile()
     return getch().ord.cint
 
 # Types
@@ -578,6 +580,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
   ##   not included in the contents of the line itself.
   ## * If **hidechars** is set to **true**, asterisks will be printed to stdout instead of the characters entered by the user.
   stdout.write(prompt)
+  stdout.flushFile()
   ed.line = Line(text: "", position: 0)
   var c = -1 # Used to manage completions
   var esc = false
