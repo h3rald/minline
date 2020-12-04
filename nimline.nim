@@ -60,7 +60,7 @@ else:
 type
   Key* = int ## The ASCII code of a keyboard key.
   KeySeq* = seq[Key] ## A sequence of one or more Keys.
-  KeyCallback* = proc(ed: var LineEditor) ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
+  KeyCallback* = proc(ed: var LineEditor) {.closure, gcsafe.} ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
   LineError* = ref Exception ## A generic nimline error.
   LineEditorError* = ref Exception ## An error occured in the LineEditor.
   LineEditorMode* = enum ## The *mode* a LineEditor operates in (insert or replace).
@@ -76,7 +76,7 @@ type
     queue: Deque[string] 
     max: int 
   LineEditor* = object ## An object representing a line editor, used to process text typed in the terminal.
-    completionCallback*: proc(ed: LineEditor): seq[string] 
+    completionCallback*: proc(ed: LineEditor): seq[string] {.closure, gcsafe.}
     history: LineHistory 
     line: Line 
     mode: LineEditorMode 
@@ -419,7 +419,7 @@ else:
     ESCAPES* = {27}           ## Escape characters.
 
 # Key Names
-var KEYNAMES*: array[0..31, string] ## The following strings can be used in keymaps instead of the correspinding ASCII codes:
+var KEYNAMES* {.threadvar.}: array[0..31, string] ## The following strings can be used in keymaps instead of the correspinding ASCII codes:
 ##
 ## .. code-block:: nim
 ##    KEYNAMES[1]    =    "ctrl+a"
@@ -479,7 +479,7 @@ KEYNAMES[25]   =    "ctrl+y"
 KEYNAMES[26]   =    "ctrl+z"
 
 # Key Sequences
-var KEYSEQS*: CritBitTree[KeySeq] ## The following key sequences are defined and are used internally by **LineEditor**:
+var KEYSEQS* {.threadvar.}: CritBitTree[KeySeq] ## The following key sequences are defined and are used internally by **LineEditor**:
 ##
 ## .. code-block:: nim
 ##    KEYSEQS["up"]         = @[27, 91, 65]      # Windows: @[224, 72]
@@ -511,7 +511,7 @@ else:
   KEYSEQS["delete"]     = @[27, 91, 51, 126]
 
 # Key Mappings
-var KEYMAP*: CritBitTree[KeyCallBack] ## The following key mappings are configured by default:
+var KEYMAP* {.threadvar.}: CritBitTree[KeyCallBack] ## The following key mappings are configured by default:
 ##
 ## * backspace: **deletePrevious**
 ## * delete: **deleteNext**
@@ -532,47 +532,49 @@ var KEYMAP*: CritBitTree[KeyCallBack] ## The following key mappings are configur
 ## * home: **goToStart**
 ## * end: **goToEnd**
 
-KEYMAP["backspace"] = proc(ed: var LineEditor) =
+KEYMAP["backspace"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.deletePrevious()
-KEYMAP["delete"] = proc(ed: var LineEditor) =
+KEYMAP["delete"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.deleteNext()
-KEYMAP["insert"] = proc(ed: var LineEditor) =
+KEYMAP["insert"] = proc(ed: var LineEditor) {.gcsafe.}=
   if ed.mode == mdInsert:
     ed.mode = mdReplace
   else:
     ed.mode = mdInsert
-KEYMAP["down"] = proc(ed: var LineEditor) =
+KEYMAP["down"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.historyNext()
-KEYMAP["up"] = proc(ed: var LineEditor) =
+KEYMAP["up"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.historyPrevious()
-KEYMAP["ctrl+n"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+n"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.historyNext()
-KEYMAP["ctrl+p"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+p"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.historyPrevious()
-KEYMAP["left"] = proc(ed: var LineEditor) =
+KEYMAP["left"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.back()
-KEYMAP["right"] = proc(ed: var LineEditor) =
+KEYMAP["right"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.forward()
-KEYMAP["ctrl+b"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+b"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.back()
-KEYMAP["ctrl+f"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+f"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.forward()
-KEYMAP["ctrl+c"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+c"] = proc(ed: var LineEditor) {.gcsafe.}=
   quit(0)
-KEYMAP["ctrl+d"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+d"] = proc(ed: var LineEditor) {.gcsafe.}=
   quit(0)
-KEYMAP["ctrl+u"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+u"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.clearLine()
-KEYMAP["ctrl+a"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+a"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.goToStart()
-KEYMAP["ctrl+e"] = proc(ed: var LineEditor) =
+KEYMAP["ctrl+e"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.goToEnd()
-KEYMAP["home"] = proc(ed: var LineEditor) =
+KEYMAP["home"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.goToStart()
-KEYMAP["end"] = proc(ed: var LineEditor) =
+KEYMAP["end"] = proc(ed: var LineEditor) {.gcsafe.}=
   ed.goToEnd()
 
-proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
+var keyMapProc {.threadvar.}: proc(ed: var LineEditor) {.gcsafe.}
+
+proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string {.gcsafe.} =
   ## High-level proc to be used instead of **stdin.readLine** to read a line from standard input using the specified **LineEditor** object.
   ##
   ## Note that:
@@ -654,7 +656,8 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
           elif c4 == 126 and c3 == 51:
             KEYMAP["delete"](ed)
     elif c1 in CTRL and KEYMAP.hasKey(KEYNAMES[c1]):
-      KEYMAP[KEYNAMES[c1]](ed)
+      keyMapProc = KEYMAP[KEYNAMES[c1]]
+      keyMapProc(ed)
     else:
       # Assuming unhandled two-values escape sequence; do nothing.
       if esc:
