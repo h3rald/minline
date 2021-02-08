@@ -119,6 +119,22 @@ proc back*(ed: var LineEditor, n=1) =
     return
   stdout.cursorBackward(n)
   ed.line.position = ed.line.position - n
+  
+proc up*(ed: var LineEditor, n=1) =
+  ## TODO docs
+  let maxLines = ed.currentLine
+  if maxLines <= 0:
+    return
+  var nn = min(n, maxLines)
+  if ed.currentLine <= 0:
+    return
+  let pos = ed.line.position
+  ed.currentLine = ed.currentLine - nn
+  ed.line.position = min(pos, ed.line.text.len-1)
+  stdout.cursorUp(nn)
+  let pdiff = pos - ed.line.text.len-1;
+  if pdiff > 0:
+    ed.back(pdiff)
 
 proc forward*(ed: var LineEditor, n=1) = 
   ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
@@ -126,6 +142,21 @@ proc forward*(ed: var LineEditor, n=1) =
     return
   stdout.cursorForward(n)
   ed.line.position += n
+  
+proc down*(ed: var LineEditor, n=1) =
+  ## TODO docs
+  let maxLines = ed.lines.len - 1 - ed.currentLine
+  if maxLines <= 0:
+    return
+  var nn = min(n, maxLines)
+  if ed.currentLine >= ed.lines.len-1:
+    return
+  let pos = ed.line.position
+  ed.currentLine = ed.currentLine + nn
+  stdout.cursorDown(nn)
+  let pdiff = pos - ed.line.text.len-1;
+  if pdiff > 0:
+    ed.back(pdiff)
 
 proc `[]`( q: Deque[string], pos: int): string =
   var c = 0
@@ -405,7 +436,6 @@ proc lineText*(ed: var LineEditor): string =
 proc text*(ed: var LineEditor): string =
   ## Returns the contents of all lines.
   result = ed.lines.mapIt(it.text).join("\n")
-  echo "**"  & result & "**"
 
 proc newLine*(ed: var LineEditor) =
   ## TODO: docs
@@ -559,9 +589,15 @@ KEYMAP["insert"] = proc(ed: var LineEditor) =
   else:
     ed.mode = mdInsert
 KEYMAP["down"] = proc(ed: var LineEditor) =
-  ed.historyNext()
+  if ed.currentLine >= ed.lines.len-1:
+    ed.historyNext()
+  else:
+    ed.down()
 KEYMAP["up"] = proc(ed: var LineEditor) =
-  ed.historyPrevious()
+  if ed.currentLine <= 0:
+    ed.historyPrevious()
+  else:
+    ed.up()
 KEYMAP["ctrl+n"] = proc(ed: var LineEditor) =
   ed.historyNext()
 KEYMAP["ctrl+p"] = proc(ed: var LineEditor) =
@@ -706,8 +742,10 @@ when isMainModule:
       let lpar = ed.text.count("(")
       let rpar = ed.text.count(")")
       if (lpar != rpar):
-        stdout.write("\n" & prompt & " ... ")
+        stdout.write("\n" & prompt & "... ")
         ed.newLine()
+        ed.lines[ed.currentLine].text &= "    "
+        ed.lines[ed.currentLine].position += 4
         return ""
       else:
         stdout.write("\n")
@@ -715,8 +753,11 @@ when isMainModule:
         ed.historyFlush()
         let text = ed.text
         ed.lines = newSeq[Line](0)
+        #echo "+++"
+        #echo text
+        #echo "---"
         return text
     while true:
-      echo "---", ed.readLine("-> "), "---"
+      echo ed.readLine("-> ")
 
   testLineEditor()
