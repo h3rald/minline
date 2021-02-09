@@ -114,12 +114,40 @@ proc line*(ed: var LineEditor): var Line =
   # TODO: Docs
   return ed.lines[ed.currentLine]
 
-proc back*(ed: var LineEditor, n=1) =
-  ## Move the cursor back by **n** characters on the current line (unless the beginning of the line is reached).
+proc goToStart*(ed: var LineEditor) =
+  ## Move the cursor to the beginning of the line.
   if ed.line.position <= 0:
     return
-  stdout.cursorBackward(n)
-  ed.line.position = ed.line.position - n
+  try:
+    stdout.cursorBackward(ed.line.position)
+    ed.line.position = 0
+  except:
+    discard
+
+proc goToEnd*(ed: var LineEditor) =
+  ## Move the cursor to the end of the line.
+  if ed.line.full:
+    return
+  let diff = ed.line.text.len - ed.line.position
+  stdout.cursorForward(diff)
+  ed.line.position = ed.line.text.len
+
+proc back*(ed: var LineEditor, n=1) =
+  ## Move the cursor back by **n** characters on the current line (unless the beginning of the line is reached).
+  let maxPos = ed.line.position
+  var nn = min(n, maxPos)
+  if maxPos <= 0:
+    if ed.currentLine <= 0:
+      return
+    else:
+      let pos = ed.line.position
+      ed.currentLine -= 1
+      cursorUp()
+      ed.line.position = pos-2 # make goToEnd go forward by 2
+      ed.goToEnd()
+      ed.back(max(0, nn-2))
+  stdout.cursorBackward(nn)
+  ed.line.position = ed.line.position - nn
   
 proc up*(ed: var LineEditor, n=1) =
   ## TODO docs
@@ -137,10 +165,20 @@ proc up*(ed: var LineEditor, n=1) =
 
 proc forward*(ed: var LineEditor, n=1) = 
   ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
-  if ed.line.full:
-    return
-  stdout.cursorForward(n)
-  ed.line.position += n
+  let maxPos = ed.line.text.len - ed.line.position
+  var nn = min(n, maxPos)
+  if maxPos <= 0:
+    if ed.currentLine >= ed.lines.len-1:
+     return
+    else:
+      let pos = ed.line.position
+      ed.currentLine += 1
+      cursorDown()
+      ed.line.position = pos+2
+      ed.goToStart()
+      ed.forward(max(0, nn-2))
+  stdout.cursorForward(nn)
+  ed.line.position += nn
   
 proc down*(ed: var LineEditor, n=1) =
   ## TODO docs
@@ -276,24 +314,6 @@ proc clearLine*(ed: var LineEditor) =
   stdout.cursorBackward(ed.line.text.len+1)
   ed.line.position = 0
   ed.line.text = ""
-
-proc goToStart*(ed: var LineEditor) =
-  ## Move the cursor to the beginning of the line.
-  if ed.line.position <= 0:
-    return
-  try:
-    stdout.cursorBackward(ed.line.position)
-    ed.line.position = 0
-  except:
-    discard
-
-proc goToEnd*(ed: var LineEditor) =
-  ## Move the cursor to the end of the line.
-  if ed.line.full:
-    return
-  let diff = ed.line.text.len - ed.line.position
-  stdout.cursorForward(diff)
-  ed.line.position = ed.line.text.len
 
 proc historyInit*(size = 256, file: string = ""): LineHistory =
   ## Creates a new **LineHistory** object with the specified **size** and **file**.
@@ -449,6 +469,8 @@ proc resetLine(ed: var LineEditor) =
       
 proc clearLines(ed: var LineEditor)=
   ## TODO docs
+  for line in ed.currentLine.countup(ed.lines.len-1):
+      cursorDown()
   for line in (ed.lines.len-1).countdown(0):
     eraseLine()
     if line > 0:
@@ -757,6 +779,8 @@ when isMainModule:
       cursorBackward()
       
   proc clearLines()=
+    for line in ed.currentLine.countup(ed.lines.len-1):
+      cursorDown()
     for line in (ed.lines.len-1).countdown(0):
       eraseLine()
       if line > 0:
