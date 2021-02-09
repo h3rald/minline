@@ -79,6 +79,7 @@ type
     history: LineHistory 
     lines: seq[Line]
     currentLine: int
+    prompt: string
     mode: LineEditorMode 
 
 # Internal Methods
@@ -126,11 +127,9 @@ proc up*(ed: var LineEditor, n=1) =
   if maxLines <= 0:
     return
   var nn = min(n, maxLines)
-  if ed.currentLine <= 0:
-    return
   let pos = ed.line.position
   ed.currentLine = ed.currentLine - nn
-  ed.line.position = min(pos, ed.line.text.len)
+  ed.line.position = pos
   stdout.cursorUp(nn)
   let pdiff = pos - ed.line.text.len;
   if pdiff > 0:
@@ -149,11 +148,9 @@ proc down*(ed: var LineEditor, n=1) =
   if maxLines <= 0:
     return
   var nn = min(n, maxLines)
-  if ed.currentLine >= ed.lines.len-1:
-    return
   let pos = ed.line.position
   ed.currentLine = ed.currentLine + nn
-  ed.line.position = min(pos, ed.line.text.len)
+  ed.line.position = pos
   stdout.cursorDown(nn)
   let pdiff = pos - ed.line.text.len;
   if pdiff > 0:
@@ -444,11 +441,25 @@ proc newLine*(ed: var LineEditor) =
   ed.lines.add(line)
   ed.currentLine = ed.lines.len-1
   
+proc resetLine(ed: var LineEditor) =
+  ## TODO docs
+  stdout.write("\n")
+  for c in ed.prompt:
+    cursorBackward()
+      
+proc clearLines(ed: var LineEditor)=
+  ## TODO docs
+  for line in (ed.lines.len-1).countdown(0):
+    eraseLine()
+    if line > 0:
+      cursorUp()
+  
 proc initEditor*(mode = mdInsert, historySize = 256, historyFile: string = ""): LineEditor =
   ## Creates a **LineEditor** object.
   result.lines = newSeq[Line](0)
   result.currentLine = 0
   result.mode = mode
+  result.prompt = ""
   result.history = historyInit(historySize, historyFile)
 
 # Character sets
@@ -634,6 +645,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string =
   ##   not included in the contents of the line itself.
   ## * If **hidechars** is set to **true**, asterisks will be printed to stdout instead of the characters entered by the user.
   stdout.write(prompt)
+  ed.prompt = prompt
   ed.lines = newSeq[Line](0)
   ed.newLine()
   var c = -1 # Used to manage completions
@@ -736,22 +748,37 @@ when isMainModule:
   #      quit(0)
   #
   #testChar()
-  proc testLineEditor() =
-    var ed = initEditor(historyFile = "")
-    ed.newLineCallback = proc(ed: var LineEditor, prompt: string, c: int): string =
-      stdout.write("\n   ")
-      let lpar = ed.text.count("(")
-      let rpar = ed.text.count(")")
-      if (lpar != rpar):
-        ed.newLine()
-        return ""
-      else:
-        ed.historyAdd()
-        ed.historyFlush()
-        let text = ed.text
-        ed.lines = newSeq[Line](0)
-        return text
-    while true:
-      echo ed.readLine("-> ")
+  #proc testLineEditor() =
+  var ed = initEditor(historyFile = "")
+  
+  proc resetLine() =
+    stdout.write("\n")
+    for c in ed.prompt:
+      cursorBackward()
+      
+  proc clearLines()=
+    for line in (ed.lines.len-1).countdown(0):
+      eraseLine()
+      if line > 0:
+        cursorUp()
+  
+  addExitProc(clearLines)
+  
+  ed.newLineCallback = proc(ed: var LineEditor, prompt: string, c: int): string =
+    let s = " ".repeat(prompt.len)
+    stdout.write("\n"&s)
+    let lpar = ed.text.count("(")
+    let rpar = ed.text.count(")")
+    if (lpar != rpar):
+      ed.newLine()
+      return ""
+    else:
+      ed.historyAdd()
+      ed.historyFlush()
+      let text = ed.text
+      ed.lines = newSeq[Line](0)
+      return text
+  while true:
+    echo ed.readLine("-> ")
 
-  testLineEditor()
+  #testLineEditor()
