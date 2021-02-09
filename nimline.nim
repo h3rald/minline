@@ -130,9 +130,9 @@ proc up*(ed: var LineEditor, n=1) =
     return
   let pos = ed.line.position
   ed.currentLine = ed.currentLine - nn
-  ed.line.position = min(pos, ed.line.text.len-1)
+  ed.line.position = min(pos, ed.line.text.len)
   stdout.cursorUp(nn)
-  let pdiff = pos - ed.line.text.len-1;
+  let pdiff = pos - ed.line.text.len;
   if pdiff > 0:
     ed.back(pdiff)
 
@@ -153,8 +153,9 @@ proc down*(ed: var LineEditor, n=1) =
     return
   let pos = ed.line.position
   ed.currentLine = ed.currentLine + nn
+  ed.line.position = min(pos, ed.line.text.len)
   stdout.cursorDown(nn)
-  let pdiff = pos - ed.line.text.len-1;
+  let pdiff = pos - ed.line.text.len;
   if pdiff > 0:
     ed.back(pdiff)
 
@@ -738,24 +739,17 @@ when isMainModule:
   proc testLineEditor() =
     var ed = initEditor(historyFile = "")
     ed.newLineCallback = proc(ed: var LineEditor, prompt: string, c: int): string =
-      ed.printChar(c)
+      stdout.write("\n   ")
       let lpar = ed.text.count("(")
       let rpar = ed.text.count(")")
       if (lpar != rpar):
-        stdout.write("\n" & prompt & "... ")
         ed.newLine()
-        ed.lines[ed.currentLine].text &= "    "
-        ed.lines[ed.currentLine].position += 4
         return ""
       else:
-        stdout.write("\n")
         ed.historyAdd()
         ed.historyFlush()
         let text = ed.text
         ed.lines = newSeq[Line](0)
-        #echo "+++"
-        #echo text
-        #echo "---"
         return text
     while true:
       echo ed.readLine("-> ")
