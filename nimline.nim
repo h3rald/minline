@@ -33,6 +33,7 @@ import
   terminal,
   deques,
   sequtils,
+  math,
   strutils,
   std/exitprocs,
   os
@@ -115,6 +116,24 @@ proc toEnd(line: Line): string =
 proc line*(ed: var LineEditor): var Line =
   # TODO: Docs
   return ed.lines[ed.currentLine]
+  
+proc overflow(ed: var LineEditor, l: int): int = 
+  let pparts = ed.prompt.split("\n")
+  let lprompt = pparts[pparts.len-1]
+  return terminalWidth() - ed.lines[l].text.len - lprompt.len
+  
+proc overlines(ed: var LineEditor, l: int, down = false): int = 
+  let pparts = ed.prompt.split("\n")
+  let lprompt = pparts[pparts.len-1]
+  var pos: int
+  if down:
+    pos = lprompt.len + ed.lines[l].position
+  else:
+    pos = ed.lines[l].text.len + lprompt.len - ed.lines[l].position
+  return (pos / terminalWidth()).ceil.int
+
+proc overflowing(ed: var LineEditor): bool = 
+  return ed.line.position + ed.prompt.len > terminalWidth()
 
 proc goToStart*(ed: var LineEditor) =
   ## Move the cursor to the beginning of the line.
@@ -151,16 +170,17 @@ proc back*(ed: var LineEditor, n=1) =
   stdout.cursorBackward(nn)
   ed.line.position = ed.line.position - nn
   
-proc up*(ed: var LineEditor, n=1) =
+proc up*(ed: var LineEditor) =
   ## TODO docs
   let maxLines = ed.currentLine
   if maxLines <= 0:
     return
-  var nn = min(n, maxLines)
+  let nn = min(1, maxLines)
+  let nl = 1 + ed.overlines(ed.currentLine, false)
   let pos = ed.line.position
   ed.currentLine = ed.currentLine - nn
   ed.line.position = pos
-  stdout.cursorUp(nn)
+  stdout.cursorUp(nl)
   let pdiff = pos - ed.line.text.len;
   if pdiff > 0:
     ed.back(pdiff)
@@ -182,16 +202,19 @@ proc forward*(ed: var LineEditor, n=1) =
   stdout.cursorForward(nn)
   ed.line.position += nn
   
-proc down*(ed: var LineEditor, n=1) =
+proc down*(ed: var LineEditor) =
   ## TODO docs
   let maxLines = ed.lines.len - 1 - ed.currentLine
   if maxLines <= 0:
     return
-  var nn = min(n, maxLines)
+  let nn = min(1, maxLines)
+  let nl = 1 + ed.overlines(ed.currentLine, true)
+  if nn > maxLines:
+    return
   let pos = ed.line.position
   ed.currentLine = ed.currentLine + nn
   ed.line.position = pos
-  stdout.cursorDown(nn)
+  stdout.cursorDown(nl)
   let pdiff = pos - ed.line.text.len;
   if pdiff > 0:
     ed.back(pdiff)
@@ -810,5 +833,5 @@ when isMainModule:
       ed.lines = newSeq[Line](0)
       return text
   while true:
-    echo ed.readLine("-> ")
+    echo ed.readLine("---> ")
 
