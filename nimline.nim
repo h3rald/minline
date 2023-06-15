@@ -37,7 +37,8 @@ import
   std/exitprocs,
   os
 
-addExitProc(resetAttributes)
+if isatty(stdin):
+  addExitProc(resetAttributes)
 
 when defined(windows):
   proc putchr*(c: cint): cint {.discardable, header: "<conio.h>", importc: "_putch".}
