@@ -41,12 +41,13 @@ if isatty(stdin):
   addExitProc(resetAttributes)
 
 when defined(windows):
-  proc putchr*(c: cint): cint {.discardable, header: "<conio.h>", importc: "_putch".}
+  proc putchr*(c: cint): cint {.discardable, header: "<conio.h>",
+      importc: "_putch".}
     ## Prints an ASCII character to stdout.
   proc getchr*(): cint {.header: "<conio.h>", importc: "_getch".}
     ## Retrieves an ASCII character from stdin.
 else:
-  proc putchr*(c: cint) {.header: "stdio.h", importc: "putchar"} =
+  proc putchr*(c: cint) {.header: "stdio.h", importc: "putchar".} =
     ## Prints an ASCII character to stdout.
     stdout.write(c.chr)
     stdout.flushFile()
@@ -61,28 +62,82 @@ else:
 type
   Key* = int ## The ASCII code of a keyboard key.
   KeySeq* = seq[Key] ## A sequence of one or more Keys.
-  KeyCallback* = proc(ed: var LineEditor) {.closure, gcsafe.} ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
+  KeyCallback* = proc(ed: var LineEditor) {.closure,
+      gcsafe.} ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
+
+  ### TO REMOVE
   LineError* = ref Exception ## A generic nimline error.
   LineEditorError* = ref Exception ## An error occured in the LineEditor.
   LineEditorMode* = enum ## The *mode* a LineEditor operates in (insert or replace).
     mdInsert
-    mdReplace 
+    mdReplace
   Line* = object ## An object representing a line of text.
-    text: string 
-    position: int 
+    text: string
+    position: int
   LineHistory* = object ## An object representing the history of all commands typed in a LineEditor.
-    file: string 
-    tainted: bool 
-    position: int 
-    queue: Deque[string] 
-    max: int 
+    file: string
+    tainted: bool
+    position: int
+    queue: Deque[string]
+    max: int
   LineEditor* = object ## An object representing a line editor, used to process text typed in the terminal.
     completionCallback*: proc(ed: LineEditor): seq[string] {.closure, gcsafe.}
-    history: LineHistory 
-    line: Line 
-    mode: LineEditorMode 
+    history: LineHistory
+    line: Line
+    mode: LineEditorMode
+
+  NimlineError* = ref Exception ## A generic nimline error.
+  EditorError* = ref Exception ## An error occured in the Editor.
+  EditorMode* = enum ## The *mode* a Editor operates in (insert or replace).
+    modeInsert
+    modeReplace
+  Entry* = object ## An object representing text entered in a prompt, potentially including multiple lines.
+    text: string
+    position: int
+    wx: int
+    wy: int
+  Editor* = object ## An object representing a command line editor, used to process text typed in the terminal.
+    completionCallback*: proc(ed: Editor): seq[string] {.closure, gcsafe.}
+    prompt: string
+    history: History
+    entry: Entry
+    mode: EditorMode
+  History* = object ## An object representing the history of all entries typed in an Editor.
+    file: string
+    tainted: bool
+    position: int
+    queue: Deque[Entry]
+    max: int
 
 # Internal Methods
+
+proc bol*(ed: Editor): int =
+  ## Returns the beginning of line index.
+  return 0
+
+proc eol*(ed: Editor): int =
+  ## Returns the end of line index based on terminal width.
+  return terminalWidth - ed.prompt.len
+
+proc boh*(ed: Editor): int =
+  ## Return the beginning of history index.
+  return 0
+
+proc eoh*(ed: Editor): int =
+  ## Returns the end of history index.
+  return ed.history.len-1
+
+
+proc lines*(en: Entry): seq[string] =
+  ## Returns a sequence of all lines in an entry, regardless of terminal width.
+  return en.text.split("\n")
+
+proc wlines*(en: Entry): seq[string] =
+  ## Returns a sequence of all wrapped lines in an entry, taking into account terminal width.
+  result = newSeq[string](0)
+  # TODO
+
+# TO REVIEW:
 
 proc empty(line: Line): bool =
   return line.text.len <= 0
@@ -110,21 +165,21 @@ proc toEnd(line: Line): string =
     return ""
   return line.text[line.position..line.last]
 
-proc back*(ed: var LineEditor, n=1) =
+proc back*(ed: var LineEditor, n = 1) =
   ## Move the cursor back by **n** characters on the current line (unless the beginning of the line is reached).
   if ed.line.position <= 0:
     return
   stdout.cursorBackward(n)
   ed.line.position = ed.line.position - n
 
-proc forward*(ed: var LineEditor, n=1) = 
+proc forward*(ed: var LineEditor, n = 1) =
   ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
   if ed.line.full:
     return
   stdout.cursorForward(n)
   ed.line.position += n
 
-proc `[]`( q: Deque[string], pos: int): string =
+proc `[]`(q: Deque[string], pos: int): string =
   var c = 0
   for e in q.items:
     if c == pos:
@@ -132,7 +187,7 @@ proc `[]`( q: Deque[string], pos: int): string =
       break
     c.inc
 
-proc `[]=`( q: var Deque[string], pos: int, s: string) =
+proc `[]=`(q: var Deque[string], pos: int, s: string) =
   var c = 0
   for e in q.mitems:
     if c == pos:
@@ -140,7 +195,7 @@ proc `[]=`( q: var Deque[string], pos: int, s: string) =
       break
     c.inc
 
-proc add(h: var LineHistory, s: string, force=false) =
+proc add(h: var LineHistory, s: string, force = false) =
   if s == "" and not force:
     return
   if h.queue.len >= h.max:
@@ -180,9 +235,10 @@ proc deletePrevious*(ed: var LineEditor) =
       ed.back
       for i in rest:
         putchr i.ord.cint
-      ed.line.text = ed.line.fromStart & ed.line.text[ed.line.position+1..ed.line.last]
+      ed.line.text = ed.line.fromStart & ed.line.text[
+          ed.line.position+1..ed.line.last]
       stdout.cursorBackward(rest.len)
-  
+
 proc deleteNext*(ed: var LineEditor) =
   ## Move the cursor to the right by one character (unless at the end of the line) and delete the existing character, if any.
   if not ed.line.empty:
@@ -193,7 +249,7 @@ proc deleteNext*(ed: var LineEditor) =
       stdout.cursorBackward(rest.len)
       ed.line.text = ed.line.fromStart & ed.line.toEnd[1..^1]
 
-proc printChar*(ed: var LineEditor, c: int) =  
+proc printChar*(ed: var LineEditor, c: int) =
   ## Prints the character **c** to the current line. If in the middle of the line, the following characters are shifted right or replaced depending on the editor mode.
   if ed.line.full:
     putchr(c.cint)
@@ -209,7 +265,7 @@ proc printChar*(ed: var LineEditor, c: int) =
         putchr(j.ord.cint)
         ed.line.position += 1
       ed.back(rest.len)
-    else: 
+    else:
       putchr(c.cint)
       ed.line.text[ed.line.position] = c.chr
       ed.line.position += 1
@@ -305,7 +361,7 @@ proc historyPrevious*(ed: var LineEditor) =
     ed.history.tainted = true
   if s != "":
     ed.changeLine(s)
-  
+
 proc historyNext*(ed: var LineEditor) =
   ## Replaces the contents of the current line with the following line stored in the history (if any).
   let s = ed.history.next
@@ -340,7 +396,7 @@ proc completeLine*(ed: var LineEditor): int =
   ##       word = words[words.len-1]
   ##     var f = word[1..^1]
   ##     if f == "":
-  ##       f = getCurrentDir().replace("\\", "/")  
+  ##       f = getCurrentDir().replace("\\", "/")
   ##       return toSeq(walkDir(f, true))
   ##         .mapIt("\"$1" % it.path.replace("\\", "/"))
   ##     elif f.dirExists:
@@ -398,184 +454,188 @@ proc completeLine*(ed: var LineEditor): int =
 proc lineText*(ed: LineEditor): string =
   ## Returns the contents of the current line.
   return ed.line.text
-  
-proc initEditor*(mode = mdInsert, historySize = 256, historyFile: string = ""): LineEditor =
+
+proc initEditor*(mode = mdInsert, historySize = 256,
+    historyFile: string = ""): LineEditor =
   ## Creates a **LineEditor** object.
   result.mode = mode
   result.history = historyInit(historySize, historyFile)
 
 # Character sets
 const
-  CTRL*        = {0 .. 31}    ## Control characters.
-  DIGIT*       = {48 .. 57}   ## Digits.
-  LETTER*      = {65 .. 122}  ## Letters.
-  UPPERLETTER* = {65 .. 90}   ## Uppercase letters.
-  LOWERLETTER* = {97 .. 122}  ## Lowercase letters.
-  PRINTABLE*   = {32 .. 126}  ## Printable characters.
+  CTRL* = {0 .. 31}          ## Control characters.
+  DIGIT* = {48 .. 57}        ## Digits.
+  LETTER* = {65 .. 122}      ## Letters.
+  UPPERLETTER* = {65 .. 90}  ## Uppercase letters.
+  LOWERLETTER* = {97 .. 122} ## Lowercase letters.
+  PRINTABLE* = {32 .. 126}   ## Printable characters.
 when defined(windows):
   const
-    ESCAPES* = {0, 22, 224}   ## Escape characters.
+    ESCAPES* = {0, 22, 224} ## Escape characters.
 else:
   const
-    ESCAPES* = {27}           ## Escape characters.
+    ESCAPES* = {27} ## Escape characters.
 
 # Key Names
-var KEYNAMES* {.threadvar.}: array[0..31, string] ## The following strings can be used in keymaps instead of the correspinding ASCII codes:
-##
-## .. code-block:: nim
-##    KEYNAMES[1]    =    "ctrl+a"
-##    KEYNAMES[2]    =    "ctrl+b"
-##    KEYNAMES[3]    =    "ctrl+c"
-##    KEYNAMES[4]    =    "ctrl+d"
-##    KEYNAMES[5]    =    "ctrl+e"
-##    KEYNAMES[6]    =    "ctrl+f"
-##    KEYNAMES[7]    =    "ctrl+g"
-##    KEYNAMES[8]    =    "ctrl+h"
-##    KEYNAMES[9]    =    "ctrl+i"
-##    KEYNAMES[9]    =    "tab"
-##    KEYNAMES[10]   =    "ctrl+j"
-##    KEYNAMES[11]   =    "ctrl+k"
-##    KEYNAMES[12]   =    "ctrl+l"
-##    KEYNAMES[13]   =    "ctrl+m"
-##    KEYNAMES[14]   =    "ctrl+n"
-##    KEYNAMES[15]   =    "ctrl+o"
-##    KEYNAMES[16]   =    "ctrl+p"
-##    KEYNAMES[17]   =    "ctrl+q"
-##    KEYNAMES[18]   =    "ctrl+r"
-##    KEYNAMES[19]   =    "ctrl+s"
-##    KEYNAMES[20]   =    "ctrl+t"
-##    KEYNAMES[21]   =    "ctrl+u"
-##    KEYNAMES[22]   =    "ctrl+v"
-##    KEYNAMES[23]   =    "ctrl+w"
-##    KEYNAMES[24]   =    "ctrl+x"
-##    KEYNAMES[25]   =    "ctrl+y"
-##    KEYNAMES[26]   =    "ctrl+z"
+var KEYNAMES* {.threadvar.}: array[0..31,
+    string] ## The following strings can be used in keymaps instead of the correspinding ASCII codes:
+ ##
+ ## .. code-block:: nim
+ ##    KEYNAMES[1]    =    "ctrl+a"
+ ##    KEYNAMES[2]    =    "ctrl+b"
+ ##    KEYNAMES[3]    =    "ctrl+c"
+ ##    KEYNAMES[4]    =    "ctrl+d"
+ ##    KEYNAMES[5]    =    "ctrl+e"
+ ##    KEYNAMES[6]    =    "ctrl+f"
+ ##    KEYNAMES[7]    =    "ctrl+g"
+ ##    KEYNAMES[8]    =    "ctrl+h"
+ ##    KEYNAMES[9]    =    "ctrl+i"
+ ##    KEYNAMES[9]    =    "tab"
+ ##    KEYNAMES[10]   =    "ctrl+j"
+ ##    KEYNAMES[11]   =    "ctrl+k"
+ ##    KEYNAMES[12]   =    "ctrl+l"
+ ##    KEYNAMES[13]   =    "ctrl+m"
+ ##    KEYNAMES[14]   =    "ctrl+n"
+ ##    KEYNAMES[15]   =    "ctrl+o"
+ ##    KEYNAMES[16]   =    "ctrl+p"
+ ##    KEYNAMES[17]   =    "ctrl+q"
+ ##    KEYNAMES[18]   =    "ctrl+r"
+ ##    KEYNAMES[19]   =    "ctrl+s"
+ ##    KEYNAMES[20]   =    "ctrl+t"
+ ##    KEYNAMES[21]   =    "ctrl+u"
+ ##    KEYNAMES[22]   =    "ctrl+v"
+ ##    KEYNAMES[23]   =    "ctrl+w"
+ ##    KEYNAMES[24]   =    "ctrl+x"
+ ##    KEYNAMES[25]   =    "ctrl+y"
+ ##    KEYNAMES[26]   =    "ctrl+z"
 
-KEYNAMES[1]    =    "ctrl+a"
-KEYNAMES[2]    =    "ctrl+b"
-KEYNAMES[3]    =    "ctrl+c"
-KEYNAMES[4]    =    "ctrl+d"
-KEYNAMES[5]    =    "ctrl+e"
-KEYNAMES[6]    =    "ctrl+f"
-KEYNAMES[7]    =    "ctrl+g"
-KEYNAMES[8]    =    "ctrl+h"
-KEYNAMES[9]    =    "ctrl+i"
-KEYNAMES[9]    =    "tab"
-KEYNAMES[10]   =    "ctrl+j"
-KEYNAMES[11]   =    "ctrl+k"
-KEYNAMES[12]   =    "ctrl+l"
-KEYNAMES[13]   =    "ctrl+m"
-KEYNAMES[14]   =    "ctrl+n"
-KEYNAMES[15]   =    "ctrl+o"
-KEYNAMES[16]   =    "ctrl+p"
-KEYNAMES[17]   =    "ctrl+q"
-KEYNAMES[18]   =    "ctrl+r"
-KEYNAMES[19]   =    "ctrl+s"
-KEYNAMES[20]   =    "ctrl+t"
-KEYNAMES[21]   =    "ctrl+u"
-KEYNAMES[22]   =    "ctrl+v"
-KEYNAMES[23]   =    "ctrl+w"
-KEYNAMES[24]   =    "ctrl+x"
-KEYNAMES[25]   =    "ctrl+y"
-KEYNAMES[26]   =    "ctrl+z"
+KEYNAMES[1] = "ctrl+a"
+KEYNAMES[2] = "ctrl+b"
+KEYNAMES[3] = "ctrl+c"
+KEYNAMES[4] = "ctrl+d"
+KEYNAMES[5] = "ctrl+e"
+KEYNAMES[6] = "ctrl+f"
+KEYNAMES[7] = "ctrl+g"
+KEYNAMES[8] = "ctrl+h"
+KEYNAMES[9] = "ctrl+i"
+KEYNAMES[9] = "tab"
+KEYNAMES[10] = "ctrl+j"
+KEYNAMES[11] = "ctrl+k"
+KEYNAMES[12] = "ctrl+l"
+KEYNAMES[13] = "ctrl+m"
+KEYNAMES[14] = "ctrl+n"
+KEYNAMES[15] = "ctrl+o"
+KEYNAMES[16] = "ctrl+p"
+KEYNAMES[17] = "ctrl+q"
+KEYNAMES[18] = "ctrl+r"
+KEYNAMES[19] = "ctrl+s"
+KEYNAMES[20] = "ctrl+t"
+KEYNAMES[21] = "ctrl+u"
+KEYNAMES[22] = "ctrl+v"
+KEYNAMES[23] = "ctrl+w"
+KEYNAMES[24] = "ctrl+x"
+KEYNAMES[25] = "ctrl+y"
+KEYNAMES[26] = "ctrl+z"
 
 # Key Sequences
-var KEYSEQS* {.threadvar.}: CritBitTree[KeySeq] ## The following key sequences are defined and are used internally by **LineEditor**:
-##
-## .. code-block:: nim
-##    KEYSEQS["up"]         = @[27, 91, 65]      # Windows: @[224, 72]
-##    KEYSEQS["down"]       = @[27, 91, 66]      # Windows: @[224, 80]
-##    KEYSEQS["right"]      = @[27, 91, 67]      # Windows: @[224, 77]
-##    KEYSEQS["left"]       = @[27, 91, 68]      # Windows: @[224, 75]
-##    KEYSEQS["home"]       = @[27, 91, 72]      # Windows: @[224, 71]
-##    KEYSEQS["end"]        = @[27, 91, 70]      # Windows: @[224, 79]
-##    KEYSEQS["insert"]     = @[27, 91, 50, 126] # Windows: @[224, 82]
-##    KEYSEQS["delete"]     = @[27, 91, 51, 126] # Windows: @[224, 83]
+var KEYSEQS* {.threadvar.}: CritBitTree[
+    KeySeq] ## The following key sequences are defined and are used internally by **LineEditor**:
+ ##
+ ## .. code-block:: nim
+ ##    KEYSEQS["up"]         = @[27, 91, 65]      # Windows: @[224, 72]
+ ##    KEYSEQS["down"]       = @[27, 91, 66]      # Windows: @[224, 80]
+ ##    KEYSEQS["right"]      = @[27, 91, 67]      # Windows: @[224, 77]
+ ##    KEYSEQS["left"]       = @[27, 91, 68]      # Windows: @[224, 75]
+ ##    KEYSEQS["home"]       = @[27, 91, 72]      # Windows: @[224, 71]
+ ##    KEYSEQS["end"]        = @[27, 91, 70]      # Windows: @[224, 79]
+ ##    KEYSEQS["insert"]     = @[27, 91, 50, 126] # Windows: @[224, 82]
+ ##    KEYSEQS["delete"]     = @[27, 91, 51, 126] # Windows: @[224, 83]
 
 when defined(windows):
-  KEYSEQS["up"]         = @[224, 72]
-  KEYSEQS["down"]       = @[224, 80]
-  KEYSEQS["right"]      = @[224, 77]
-  KEYSEQS["left"]       = @[224, 75]
-  KEYSEQS["home"]       = @[224, 71]
-  KEYSEQS["end"]        = @[224, 79]
-  KEYSEQS["insert"]     = @[224, 82]
-  KEYSEQS["delete"]     = @[224, 83]
+  KEYSEQS["up"] = @[224, 72]
+  KEYSEQS["down"] = @[224, 80]
+  KEYSEQS["right"] = @[224, 77]
+  KEYSEQS["left"] = @[224, 75]
+  KEYSEQS["home"] = @[224, 71]
+  KEYSEQS["end"] = @[224, 79]
+  KEYSEQS["insert"] = @[224, 82]
+  KEYSEQS["delete"] = @[224, 83]
 else:
-  KEYSEQS["up"]         = @[27, 91, 65]
-  KEYSEQS["down"]       = @[27, 91, 66]
-  KEYSEQS["right"]      = @[27, 91, 67]
-  KEYSEQS["left"]       = @[27, 91, 68]
-  KEYSEQS["home"]       = @[27, 91, 72]
-  KEYSEQS["end"]        = @[27, 91, 70]
-  KEYSEQS["insert"]     = @[27, 91, 50, 126]
-  KEYSEQS["delete"]     = @[27, 91, 51, 126]
+  KEYSEQS["up"] = @[27, 91, 65]
+  KEYSEQS["down"] = @[27, 91, 66]
+  KEYSEQS["right"] = @[27, 91, 67]
+  KEYSEQS["left"] = @[27, 91, 68]
+  KEYSEQS["home"] = @[27, 91, 72]
+  KEYSEQS["end"] = @[27, 91, 70]
+  KEYSEQS["insert"] = @[27, 91, 50, 126]
+  KEYSEQS["delete"] = @[27, 91, 51, 126]
 
 # Key Mappings
 var KEYMAP* {.threadvar.}: CritBitTree[KeyCallBack] ## The following key mappings are configured by default:
-##
-## * backspace: **deletePrevious**
-## * delete: **deleteNext**
-## * insert: *toggle editor mode*
-## * down: **historyNext**
-## * up: **historyPrevious**
-## * ctrl+n: **historyNext**
-## * ctrl+p: **historyPrevious**
-## * left: **back**
-## * right: **forward**
-## * ctrl+b: **back**
-## * ctrl+f: **forward**
-## * ctrl+c: *quits the program*
-## * ctrl+d: *quits the program*
-## * ctrl+u: **clearLine**
-## * ctrl+a: **goToStart**
-## * ctrl+e: **goToEnd**
-## * home: **goToStart**
-## * end: **goToEnd**
+ ##
+ ## * backspace: **deletePrevious**
+ ## * delete: **deleteNext**
+ ## * insert: *toggle editor mode*
+ ## * down: **historyNext**
+ ## * up: **historyPrevious**
+ ## * ctrl+n: **historyNext**
+ ## * ctrl+p: **historyPrevious**
+ ## * left: **back**
+ ## * right: **forward**
+ ## * ctrl+b: **back**
+ ## * ctrl+f: **forward**
+ ## * ctrl+c: *quits the program*
+ ## * ctrl+d: *quits the program*
+ ## * ctrl+u: **clearLine**
+ ## * ctrl+a: **goToStart**
+ ## * ctrl+e: **goToEnd**
+ ## * home: **goToStart**
+ ## * end: **goToEnd**
 
-KEYMAP["backspace"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["backspace"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.deletePrevious()
-KEYMAP["delete"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["delete"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.deleteNext()
-KEYMAP["insert"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["insert"] = proc(ed: var LineEditor) {.gcsafe.} =
   if ed.mode == mdInsert:
     ed.mode = mdReplace
   else:
     ed.mode = mdInsert
-KEYMAP["down"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["down"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.historyNext()
-KEYMAP["up"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["up"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.historyPrevious()
-KEYMAP["ctrl+n"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+n"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.historyNext()
-KEYMAP["ctrl+p"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+p"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.historyPrevious()
-KEYMAP["left"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["left"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.back()
-KEYMAP["right"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["right"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.forward()
-KEYMAP["ctrl+b"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+b"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.back()
-KEYMAP["ctrl+f"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+f"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.forward()
-KEYMAP["ctrl+c"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+c"] = proc(ed: var LineEditor) {.gcsafe.} =
   quit(0)
-KEYMAP["ctrl+d"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+d"] = proc(ed: var LineEditor) {.gcsafe.} =
   quit(0)
-KEYMAP["ctrl+u"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+u"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.clearLine()
-KEYMAP["ctrl+a"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+a"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.goToStart()
-KEYMAP["ctrl+e"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+e"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.goToEnd()
-KEYMAP["home"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["home"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.goToStart()
-KEYMAP["end"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["end"] = proc(ed: var LineEditor) {.gcsafe.} =
   ed.goToEnd()
 
 var keyMapProc {.threadvar.}: proc(ed: var LineEditor) {.gcsafe.}
 
-proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string {.gcsafe.} =
+proc readLine*(ed: var LineEditor, prompt = "",
+    hidechars = false): string {.gcsafe.} =
   ## High-level proc to be used instead of **stdin.readLine** to read a line from standard input using the specified **LineEditor** object.
   ##
   ## Note that:
@@ -601,7 +661,7 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string {.gcsaf
       stdout.write("\n")
       ed.historyAdd()
       ed.historyFlush()
-      return ed.line.text 
+      return ed.line.text
     elif c1 in {8, 127}:
       KEYMAP["backspace"](ed)
     elif c1 in PRINTABLE:
@@ -668,10 +728,10 @@ proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string {.gcsaf
         esc = true
         continue
 
-proc password*(ed: var LineEditor, prompt=""): string =
+proc password*(ed: var LineEditor, prompt = ""): string =
   ## Convenience method to use instead of **readLine** to hide the characters inputed by the user.
   return ed.readLine(prompt, true)
- 
+
 when isMainModule:
   #proc testChar() =
   #  while true:
