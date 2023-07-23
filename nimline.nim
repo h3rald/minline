@@ -93,6 +93,7 @@ type
     modeReplace
   Entry* = object ## An object representing text entered in a prompt, potentially including multiple lines.
     text: string
+    offset: int
     position: int
     wx: int
     wy: int
@@ -111,21 +112,21 @@ type
 
 # Internal Methods
 
-proc bol*(ed: Editor): int =
+proc bol*(ed: var Editor): int =
   ## Returns the beginning of line index.
   return 0
 
-proc eol*(ed: Editor): int =
+proc eol*(ed: var Editor): int =
   ## Returns the end of line index based on terminal width.
-  return terminalWidth - ed.prompt.len
+  return terminalWidth() - ed.prompt.len
 
-proc boh*(ed: Editor): int =
+proc boh*(ed: var Editor): int =
   ## Return the beginning of history index.
   return 0
 
-proc eoh*(ed: Editor): int =
+proc eoh*(ed: var Editor): int =
   ## Returns the end of history index.
-  return ed.history.len-1
+  return ed.history.queue.len-1
 
 
 proc lines*(en: Entry): seq[string] =
@@ -134,8 +135,18 @@ proc lines*(en: Entry): seq[string] =
 
 proc wlines*(en: Entry): seq[string] =
   ## Returns a sequence of all wrapped lines in an entry, taking into account terminal width.
+  let wlineLen = terminalWidth() - en.offset
   result = newSeq[string](0)
-  # TODO
+  for line in en.lines():
+    if line.len <= wlineLen:
+      result.add(line)
+    else:
+      var rest = line
+      while (rest.len > wlineLen):
+        result.add(rest[0..wlineLen-1])
+        rest = rest[wlineLen..rest.len-1]
+      if (rest.len > 0):
+        result.add(rest)
 
 # TO REVIEW:
 
