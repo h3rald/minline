@@ -62,8 +62,9 @@ else:
 type
   Key* = int ## The ASCII code of a keyboard key.
   KeySeq* = seq[Key] ## A sequence of one or more Keys.
-  KeyCallback* = proc(ed: var LineEditor) {.closure,
+  KeyCallback* = proc(ed: var Editor) {.closure,
       gcsafe.} ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
+
 
   ### TO REMOVE
   LineError* = ref Exception ## A generic nimline error.
@@ -166,7 +167,7 @@ proc wlen(en: Entry): int =
 proc wlen(ed: Editor): int =
   return ed.entry.wlen
 
-proc wempty(en: Entry): bool =
+proc empty(en: Entry): bool =
   return en.text.len == 0
 
 proc wx(ed: var Editor): int =
@@ -281,12 +282,50 @@ proc add(h: var History, entry: Entry, force = false) =
   else:
     h.queue.addLast entry
 
+proc full(entry: Entry): bool =
+  return entry.position >= entry.text.len
+
+proc toEnd(entry: Entry): string =
+  if entry.empty:
+    return ""
+  return entry.text[entry.position..entry.eoe]
+
+# Reviewed
+proc back*(ed: var Editor, n = 1) =
+  ## Move the cursor back by **n** characters on the current line (unless the beginning of the line is reached).
+  if ed.entry.position <= 0:
+    return
+  stdout.cursorBackward(n)
+  ed.entry.position = ed.entry.position - n
+
+# Reviewed
+proc forward*(ed: var Editor, n = 1) =
+  ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
+  if ed.entry.full:
+    return
+  stdout.cursorForward(n)
+  ed.entry.position += n
+
+proc historyAdd*(ed: var Editor, force = false) =
+  ## Adds the current editor line to the history. If **force** is set to **true**, the line will be added even if it's blank.
+  ed.history.add ed.entry, force
+  if ed.history.file == "":
+    return
+  ed.history.file.writeFile(toSeq(ed.history.queue.items).join("\f"))
+
+proc historyFlush*(ed: var Editor) =
+  ## If there is at least one entry in the history, it sets the position of the cursor to the last element and sets the **tainted** flag to **false**.
+  if ed.history.queue.len > 0:
+    ed.history.position = ed.history.queue.len
+    ed.history.tainted = false
+
 # TO REVIEW:
 
 # Reviewed
 proc empty(line: Line): bool =
   return line.text.len <= 0
 
+# Reviewed
 proc full(line: Line): bool =
   return line.position >= line.text.len
 
@@ -401,6 +440,7 @@ proc deleteNext*(ed: var LineEditor) =
       stdout.cursorBackward(rest.len)
       ed.line.text = ed.line.fromStart & ed.line.toEnd[1..^1]
 
+# Reviewed
 proc printChar*(ed: var LineEditor, c: int) =
   ## Prints the character **c** to the current line. If in the middle of the line, the following characters are shifted right or replaced depending on the editor mode.
   if ed.line.full:
@@ -491,7 +531,7 @@ proc historyInit*(size = 256, file: string = ""): LineHistory =
   else:
     result.file.writeFile("")
 
-# Reviewed (add)
+# Reviewed
 proc historyAdd*(ed: var LineEditor, force = false) =
   ## Adds the current editor line to the history. If **force** is set to **true**, the line will be added even if it's blank.
   ed.history.add ed.line.text, force
@@ -750,145 +790,47 @@ var KEYMAP* {.threadvar.}: CritBitTree[KeyCallBack] ## The following key mapping
  ## * home: **goToStart**
  ## * end: **goToEnd**
 
-KEYMAP["backspace"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.deletePrevious()
-KEYMAP["delete"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.deleteNext()
-KEYMAP["insert"] = proc(ed: var LineEditor) {.gcsafe.} =
-  if ed.mode == mdInsert:
-    ed.mode = mdReplace
+# KEYMAP["backspace"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.deletePrevious()
+# KEYMAP["delete"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.deleteNext()
+KEYMAP["insert"] = proc(ed: var Editor) {.gcsafe.} =
+  if ed.mode == modeInsert:
+    ed.mode = modeReplace
   else:
-    ed.mode = mdInsert
-KEYMAP["down"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.historyNext()
-KEYMAP["up"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.historyPrevious()
-KEYMAP["ctrl+n"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.historyNext()
-KEYMAP["ctrl+p"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.historyPrevious()
-KEYMAP["left"] = proc(ed: var LineEditor) {.gcsafe.} =
+    ed.mode = modeInsert
+KEYMAP["down"] = proc(ed: var Editor) {.gcsafe.} =
+  ed.down()
+KEYMAP["up"] = proc(ed: var Editor) {.gcsafe.} =
+  ed.up()
+# KEYMAP["ctrl+n"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.historyNext()
+# KEYMAP["ctrl+p"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.historyPrevious()
+KEYMAP["left"] = proc(ed: var Editor) {.gcsafe.} =
   ed.back()
-KEYMAP["right"] = proc(ed: var LineEditor) {.gcsafe.} =
+KEYMAP["right"] = proc(ed: var Editor) {.gcsafe.} =
   ed.forward()
-KEYMAP["ctrl+b"] = proc(ed: var LineEditor) {.gcsafe.} =
+KEYMAP["ctrl+b"] = proc(ed: var Editor) {.gcsafe.} =
   ed.back()
-KEYMAP["ctrl+f"] = proc(ed: var LineEditor) {.gcsafe.} =
+KEYMAP["ctrl+f"] = proc(ed: var Editor) {.gcsafe.} =
   ed.forward()
-KEYMAP["ctrl+c"] = proc(ed: var LineEditor) {.gcsafe.} =
+KEYMAP["ctrl+c"] = proc(ed: var Editor) {.gcsafe.} =
   quit(0)
-KEYMAP["ctrl+d"] = proc(ed: var LineEditor) {.gcsafe.} =
+KEYMAP["ctrl+d"] = proc(ed: var Editor) {.gcsafe.} =
   quit(0)
-KEYMAP["ctrl+u"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.clearLine()
-KEYMAP["ctrl+a"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.goToStart()
-KEYMAP["ctrl+e"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.goToEnd()
-KEYMAP["home"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.goToStart()
-KEYMAP["end"] = proc(ed: var LineEditor) {.gcsafe.} =
-  ed.goToEnd()
+# KEYMAP["ctrl+u"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.clearLine()
+# KEYMAP["ctrl+a"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.goToStart()
+# KEYMAP["ctrl+e"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.goToEnd()
+# KEYMAP["home"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.goToStart()
+# KEYMAP["end"] = proc(ed: var Editor) {.gcsafe.} =
+#   ed.goToEnd()
 
-var keyMapProc {.threadvar.}: proc(ed: var LineEditor) {.gcsafe.}
-
-proc readLine*(ed: var LineEditor, prompt = "",
-    hidechars = false): string {.gcsafe.} =
-  ## High-level proc to be used instead of **stdin.readLine** to read a line from standard input using the specified **LineEditor** object.
-  ##
-  ## Note that:
-  ## * **prompt** is a string (that *cannot* contain escape codes, so it cannot be colored) that will be prepended at the start of the line and
-  ##   not included in the contents of the line itself.
-  ## * If **hidechars** is set to **true**, asterisks will be printed to stdout instead of the characters entered by the user.
-  stdout.write(prompt)
-  stdout.flushFile()
-  ed.line = Line(text: "", position: 0)
-  var c = -1 # Used to manage completions
-  var esc = false
-  while true:
-    var c1: int
-    if c > 0:
-      c1 = c
-      c = -1
-    else:
-      c1 = getchr()
-    if esc:
-      esc = false
-      continue
-    elif c1 in {10, 13}:
-      stdout.write("\n")
-      ed.historyAdd()
-      ed.historyFlush()
-      return ed.line.text
-    elif c1 in {8, 127}:
-      KEYMAP["backspace"](ed)
-    elif c1 in PRINTABLE:
-      if hidechars:
-        putchr('*'.ord.cint)
-        ed.line.text &= c1.chr
-        ed.line.position.inc
-      else:
-        ed.printChar(c1)
-    elif c1 == 9: # TAB
-      c = ed.completeLine()
-    elif c1 in ESCAPES:
-      var s = newSeq[Key](0)
-      s.add(c1)
-      let c2 = getchr()
-      s.add(c2)
-      if s == KEYSEQS["left"]:
-        KEYMAP["left"](ed)
-      elif s == KEYSEQS["right"]:
-        KEYMAP["right"](ed)
-      elif s == KEYSEQS["up"]:
-        KEYMAP["up"](ed)
-      elif s == KEYSEQS["down"]:
-        KEYMAP["down"](ed)
-      elif s == KEYSEQS["home"]:
-        KEYMAP["home"](ed)
-      elif s == KEYSEQS["end"]:
-        KEYMAP["end"](ed)
-      elif s == KEYSEQS["delete"]:
-        KEYMAP["delete"](ed)
-      elif s == KEYSEQS["insert"]:
-        KEYMAP["insert"](ed)
-      elif c2 == 91:
-        let c3 = getchr()
-        s.add(c3)
-        if s == KEYSEQS["right"]:
-          KEYMAP["right"](ed)
-        elif s == KEYSEQS["left"]:
-          KEYMAP["left"](ed)
-        elif s == KEYSEQS["up"]:
-          KEYMAP["up"](ed)
-        elif s == KEYSEQS["down"]:
-          KEYMAP["down"](ed)
-        elif s == KEYSEQS["home"]:
-          KEYMAP["home"](ed)
-        elif s == KEYSEQS["end"]:
-          KEYMAP["end"](ed)
-        elif c3 in {50, 51}:
-          let c4 = getchr()
-          s.add(c4)
-          if c4 == 126 and c3 == 50:
-            KEYMAP["insert"](ed)
-          elif c4 == 126 and c3 == 51:
-            KEYMAP["delete"](ed)
-    elif c1 in CTRL and KEYMAP.hasKey(KEYNAMES[c1]):
-      keyMapProc = KEYMAP[KEYNAMES[c1]]
-      keyMapProc(ed)
-    else:
-      # Assuming unhandled two-values escape sequence; do nothing.
-      if esc:
-        esc = false
-        continue
-      else:
-        esc = true
-        continue
-
-proc password*(ed: var LineEditor, prompt = ""): string =
-  ## Convenience method to use instead of **readLine** to hide the characters inputed by the user.
-  return ed.readLine(prompt, true)
+var keyMapProc {.threadvar.}: proc(ed: var Editor) {.gcsafe.}
 
 # ---------------- NEW METHODS ---------------- #
 
@@ -932,29 +874,28 @@ proc changeLine*(ed: var Editor, entry: Entry) =
       putchr(32)
     stdout.cursorBackward(diff)
 
-proc REVIEW_printChar*(ed: var LineEditor, c: int) =
+proc printChar*(ed: var Editor, c: int) =
   ## Prints the character **c** to the current line. If in the middle of the line, the following characters are shifted right or replaced depending on the editor mode.
-  if ed.line.full:
+  if ed.entry.full:
     putchr(c.cint)
-    ed.line.text &= c.chr
-    ed.line.position += 1
+    ed.entry.text &= c.chr
+    ed.entry.position += 1
   else:
-    if ed.mode == mdInsert:
+    if ed.mode == modeInsert:
       putchr(c.cint)
-      let rest = ed.line.toEnd
-      ed.line.text.insert($c.chr, ed.line.position)
-      ed.line.position += 1
+      let rest = ed.entry.toEnd
+      ed.entry.text.insert($c.chr, ed.entry.position)
+      ed.entry.position += 1
       for j in rest:
         putchr(j.ord.cint)
-        ed.line.position += 1
+        ed.entry.position += 1
       ed.back(rest.len)
     else:
       putchr(c.cint)
-      ed.line.text[ed.line.position] = c.chr
-      ed.line.position += 1
+      ed.entry.text[ed.entry.position] = c.chr
+      ed.entry.position += 1
 
-proc REVIEW_readLine*(ed: var LineEditor, prompt = "",
-    hidechars = false): string {.gcsafe.} =
+proc readLine*(ed: var Editor, prompt = "", hidechars = false): string {.gcsafe.} =
   ## High-level proc to be used instead of **stdin.readLine** to read a line from standard input using the specified **LineEditor** object.
   ##
   ## Note that:
@@ -963,7 +904,6 @@ proc REVIEW_readLine*(ed: var LineEditor, prompt = "",
   ## * If **hidechars** is set to **true**, asterisks will be printed to stdout instead of the characters entered by the user.
   stdout.write(prompt)
   stdout.flushFile()
-  ed.line = Line(text: "", position: 0)
   var c = -1 # Used to manage completions
   var esc = false
   while true:
@@ -980,18 +920,20 @@ proc REVIEW_readLine*(ed: var LineEditor, prompt = "",
       stdout.write("\n")
       ed.historyAdd()
       ed.historyFlush()
-      return ed.line.text
-    elif c1 in {8, 127}:
-      KEYMAP["backspace"](ed)
+      return ed.entry.text
+    # TODO
+    #elif c1 in {8, 127}:
+    #  KEYMAP["backspace"](ed)
     elif c1 in PRINTABLE:
       if hidechars:
         putchr('*'.ord.cint)
-        ed.line.text &= c1.chr
-        ed.line.position.inc
+        ed.entry.text &= c1.chr
+        ed.entry.position.inc
       else:
         ed.printChar(c1)
-    elif c1 == 9: # TAB
-      c = ed.completeLine()
+    # TODO
+    #elif c1 == 9: # TAB
+    #  c = ed.completeLine()
     elif c1 in ESCAPES:
       var s = newSeq[Key](0)
       s.add(c1)
@@ -1005,14 +947,14 @@ proc REVIEW_readLine*(ed: var LineEditor, prompt = "",
         KEYMAP["up"](ed)
       elif s == KEYSEQS["down"]:
         KEYMAP["down"](ed)
-      elif s == KEYSEQS["home"]:
-        KEYMAP["home"](ed)
-      elif s == KEYSEQS["end"]:
-        KEYMAP["end"](ed)
-      elif s == KEYSEQS["delete"]:
-        KEYMAP["delete"](ed)
-      elif s == KEYSEQS["insert"]:
-        KEYMAP["insert"](ed)
+      #elif s == KEYSEQS["home"]:
+      #  KEYMAP["home"](ed)
+      #elif s == KEYSEQS["end"]:
+      #  KEYMAP["end"](ed)
+      #elif s == KEYSEQS["delete"]:
+      #  KEYMAP["delete"](ed)
+      #elif s == KEYSEQS["insert"]:
+      #  KEYMAP["insert"](ed)
       elif c2 == 91:
         let c3 = getchr()
         s.add(c3)
@@ -1024,20 +966,20 @@ proc REVIEW_readLine*(ed: var LineEditor, prompt = "",
           KEYMAP["up"](ed)
         elif s == KEYSEQS["down"]:
           KEYMAP["down"](ed)
-        elif s == KEYSEQS["home"]:
-          KEYMAP["home"](ed)
-        elif s == KEYSEQS["end"]:
-          KEYMAP["end"](ed)
+        #elif s == KEYSEQS["home"]:
+        #  KEYMAP["home"](ed)
+        #elif s == KEYSEQS["end"]:
+        #  KEYMAP["end"](ed)
         elif c3 in {50, 51}:
           let c4 = getchr()
           s.add(c4)
-          if c4 == 126 and c3 == 50:
-            KEYMAP["insert"](ed)
-          elif c4 == 126 and c3 == 51:
-            KEYMAP["delete"](ed)
-    elif c1 in CTRL and KEYMAP.hasKey(KEYNAMES[c1]):
-      keyMapProc = KEYMAP[KEYNAMES[c1]]
-      keyMapProc(ed)
+          #if c4 == 126 and c3 == 50:
+          #  KEYMAP["insert"](ed)
+          #elif c4 == 126 and c3 == 51:
+          #  KEYMAP["delete"](ed)
+      elif c1 in CTRL and KEYMAP.hasKey(KEYNAMES[c1]):
+        keyMapProc = KEYMAP[KEYNAMES[c1]]
+        keyMapProc(ed)
     else:
       # Assuming unhandled two-values escape sequence; do nothing.
       if esc:
@@ -1047,7 +989,7 @@ proc REVIEW_readLine*(ed: var LineEditor, prompt = "",
         esc = true
         continue
 
-proc REVIEW_password*(ed: var LineEditor, prompt = ""): string =
+proc password*(ed: var Editor, prompt = ""): string =
   ## Convenience method to use instead of **readLine** to hide the characters inputed by the user.
   return ed.readLine(prompt, true)
 
@@ -1061,7 +1003,7 @@ when isMainModule:
   #
   #testChar()
   proc testLineEditor() =
-    var ed = initLineEditor(historyFile = "")
+    var ed = initEditor(historyFile = "")
     while true:
       echo "---", ed.readLine("-> "), "---"
 
