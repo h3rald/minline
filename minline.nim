@@ -86,7 +86,7 @@ type
     line: Line
     mode: LineEditorMode
 
-  NimlineError* = ref Exception ## A generic nimline error.
+  MinlineError* = ref Exception ## A generic nimline error.
   EditorError* = ref Exception ## An error occured in the Editor.
   EditorMode* = enum ## The *mode* a Editor operates in (insert or replace).
     modeInsert

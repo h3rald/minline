@@ -1,8 +1,8 @@
 # Package
 
-version       = "0.1.0"
+version       = "1.0.0"
 author        = "Fabio Cevasco"
-description   = "A line editing library in pure Nim"
+description   = "A minimal line editing library in pure Nim"
 license       = "MIT"
 srcDir        = "."
 binDir        = "bin"
@@ -11,4 +11,4 @@ installExt    = @["nim"]
 
 # Dependencies
 
-requires "nim >= 1.0.0"
+requires "nim >= 1.6.14"
