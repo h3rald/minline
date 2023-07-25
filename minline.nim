@@ -97,10 +97,9 @@ type
     text: string ## The full text of the entry, including newlines.
     offset: int ## The number of characters reserved for the line prompt.
     position: int ## The current position of the cursor within the entry text.
-    wx: int ## Position of the cursor within the current wrapped line.
-    wy: int ## Index of the current wrapped line.
   Editor* = object ## An object representing a command line editor, used to process text typed in the terminal.
     completionCallback*: proc(ed: Editor): seq[string] {.closure, gcsafe.} ## Callback executed when completion key is pressed (e.g. TAB)
+    newLineCallback*: proc(ed: var Editor, prompt: string, c: int): string {.closure, gcsafe.}
     prompt: string ## Editor prompt
     history: History ## Editor history
     index: int ## Current history index
@@ -140,50 +139,33 @@ proc eoe(ed: var Editor): int =
   return ed.entry.eoe()
 
 proc lines(en: Entry): seq[string] =
-  ## Returns a sequence of all lines in an entry, regardless of terminal width.
+  ## Returns a sequence of all lines in an entry.
   return en.text.split("\n")
 
-proc wlines(en: Entry): seq[string] =
-  ## Returns a sequence of all wrapped lines in an entry, taking into account terminal width.
-  let wlineLen = terminalWidth() - en.offset
-  result = newSeq[string](0)
-  for line in en.lines():
-    if line.len <= wlineLen:
-      result.add(line)
-    else:
-      var rest = line
-      while (rest.len > wlineLen):
-        result.add(rest[0..wlineLen-1])
-        rest = rest[wlineLen..rest.len-1]
-      if (rest.len > 0):
-        result.add(rest)
+proc index(en: Entry): int =
+  ## Returns the index to the current line, based on cursor position
+  result = 0
+  var cursor = en.position
+  for line in en.lines:
+    if cursor <= line.len:
+      return
+    cursor.dec(line.len)
 
-proc wline(en: Entry): string = 
-  return en.wlines[en.wy]
+proc line(en: Entry): string =
+  return en.lines[en.index]
 
-proc wlen(en: Entry): int =
-  return en.wline.len
-
-proc wlen(ed: Editor): int =
-  return ed.entry.wlen
+proc linepos(en: Entry): int =
+  result = en.position
+  for line in en.lines:
+    if result <= line.len:
+      return
+    result.dec(line.len)
 
 proc empty(en: Entry): bool =
   return en.text.len == 0
 
-proc wx(ed: var Editor): int =
-  return ed.wx
-
-proc wy(ed: var Editor): int =
-  return ed.wy
-
-proc `wx=`(ed: var Editor, value: int) =
-  ed.wx = value
-
-proc `wy=`(ed: var Editor, value: int) =
-  ed.wy = value
-
 proc position(ed: var Editor): int = 
-  return ed.position
+  return ed.entry.position
 
 proc `position=`(ed: var Editor, value: int) =
   ed.position = value
@@ -192,69 +174,86 @@ proc boe(en: Entry): int =
   return 0
 
 proc eoe(en: Entry): int =
-  return en.wlen-1
+  return en.line.len-1
 
 proc changeLine*(ed: var Editor, entry: Entry)
 
 proc add(h: var History, entry: Entry, force = false) 
 
+proc full(entry: Entry): bool =
+  return entry.position >= entry.text.len
+
+# Reviewed
+proc back*(ed: var Editor, n = 1) =
+  ## Move the cursor back by **n** characters on the current line (unless the beginning of the line is reached).
+  if ed.entry.position <= 0:
+    return
+  stdout.cursorBackward(n)
+  ed.entry.position = ed.entry.position - n
+
+# Reviewed
+proc forward*(ed: var Editor, n = 1) =
+  ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
+  if ed.entry.full:
+    return
+  stdout.cursorForward(n)
+  ed.entry.position += n
+
 # Arrow Keys
 
 proc up*(ed: var Editor) =
-  if ed.wy <= ed.boe:
+  if ed.entry.index <= ed.boe:
+    # beginning of entry
     if ed.index <= ed.boh:
+      # beginning of history
       return
     ed.history.add(ed.entry)
     ed.index -= 1
     ed.changeLine(ed.history.queue[ed.index])
     return
-  if ed.wx < ed.entry.wlines[ed.wy-1].len:
-    ed.wy = ed.wy - 1
+  let prevline = ed.entry.lines[ed.entry.index]
+  if ed.entry.linepos <= prevline.len:
+    # previous wline is shorter than current line
+    ed.back(ed.entry.linepos)
     return
-  ed.wy = ed.entry.wlines[ed.wy-1].len-1
+  ed.back(prevline.len)
 
 proc down*(ed: var Editor) =
-  if ed.wy >= ed.eoe:
+  if ed.entry.index >= ed.eoe:
     if ed.index >= ed.eoh:
       return
     ed.index += 1
     ed.changeLine(ed.history.queue[ed.index])
     return
-  if ed.wx <= ed.entry.wlines[ed.wy+1].len:
-    ed.wy = ed.wy - 1
+  let nextline = ed.entry.lines[ed.entry.index+1]
+  if ed.entry.linepos >= nextline.len:
+    # current wline is longer than next line
+    ed.forward(ed.entry.line.len - ed.entry.linepos + nextline.len)
     return
-  ed.wy = ed.entry.wlines[ed.wy+1].len-1 
+  ed.forward(ed.entry.line.len)
 
 proc left*(ed: var Editor) =
-  if ed.wx <= ed.bol:
-    if ed.wy <= ed.boe:
+  if ed.entry.linepos <= ed.bol:
+    if ed.entry.index <= ed.boe:
       return
     let prevPos = ed.position
-    ed.wy = ed.wy - 1
-    ed.wx = ed.wlen - 1
-    ed.position = ed.position - prevPos
+    ed.back(prevPos)
     return
-  ed.wx = ed.wx - 1
-  ed.position = ed.position - 1
+  ed.back()
 
 proc right*(ed: var Editor) = 
-  if ed.wx >= ed.eol:
-    if ed.wy >= ed.eoe:
+  if ed.entry.linepos >= ed.eol:
+    if ed.entry.index >= ed.eoe:
       return
     let prevPos = ed.position
-    ed.wy = ed.wy + 1
-    ed.wx = ed.bol
-    ed.position = ed.position + prevPos
+    ed.forward(prevPos)
     return
-  ed.wx = ed.wx + 1
-  ed.position = ed.position + 1
+  ed.forward()
 
-proc initEntry*(text = "", offset = 0, position = 0, wx = 0, wy = 0): Entry =
+proc initEntry*(text = "", offset = 0, position = 0): Entry =
   result.text = text
   result.offset = offset
   result.position = position
-  result.wx = wx
-  result.wy = wx
 
 proc `[]`(q: Deque[Entry], pos: int): Entry =
   var c = 0
@@ -282,29 +281,10 @@ proc add(h: var History, entry: Entry, force = false) =
   else:
     h.queue.addLast entry
 
-proc full(entry: Entry): bool =
-  return entry.position >= entry.text.len
-
 proc toEnd(entry: Entry): string =
   if entry.empty:
     return ""
   return entry.text[entry.position..entry.eoe]
-
-# Reviewed
-proc back*(ed: var Editor, n = 1) =
-  ## Move the cursor back by **n** characters on the current line (unless the beginning of the line is reached).
-  if ed.entry.position <= 0:
-    return
-  stdout.cursorBackward(n)
-  ed.entry.position = ed.entry.position - n
-
-# Reviewed
-proc forward*(ed: var Editor, n = 1) =
-  ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
-  if ed.entry.full:
-    return
-  stdout.cursorForward(n)
-  ed.entry.position += n
 
 proc historyAdd*(ed: var Editor, force = false) =
   ## Adds the current editor line to the history. If **force** is set to **true**, the line will be added even if it's blank.
@@ -856,6 +836,7 @@ proc initEditor*(mode = modeInsert, historySize = 256, historyFile: string = "")
   ## Creates a **Editor** object.
   result.mode = mode
   result.index = 0
+  result.entry = initEntry()
   result.history = initHistory(historySize, historyFile)
 
 proc changeLine*(ed: var Editor, entry: Entry) =
@@ -917,10 +898,18 @@ proc readLine*(ed: var Editor, prompt = "", hidechars = false): string {.gcsafe.
       esc = false
       continue
     elif c1 in {10, 13}:
-      stdout.write("\n")
-      ed.historyAdd()
-      ed.historyFlush()
-      return ed.entry.text
+      if not ed.newLineCallback.isNil:
+        let line = ed.newLineCallback(ed, prompt, c1)
+        ed.entry.text &= c1.chr
+        ed.entry.position.inc
+        if line != "":
+          return line
+      else:
+        ed.historyAdd()
+        ed.historyFlush()
+        let text = ed.entry.text
+        ed.entry = initEntry()
+        return text
     # TODO
     #elif c1 in {8, 127}:
     #  KEYMAP["backspace"](ed)
@@ -977,9 +966,9 @@ proc readLine*(ed: var Editor, prompt = "", hidechars = false): string {.gcsafe.
           #  KEYMAP["insert"](ed)
           #elif c4 == 126 and c3 == 51:
           #  KEYMAP["delete"](ed)
-      elif c1 in CTRL and KEYMAP.hasKey(KEYNAMES[c1]):
-        keyMapProc = KEYMAP[KEYNAMES[c1]]
-        keyMapProc(ed)
+    elif c1 in CTRL and KEYMAP.hasKey(KEYNAMES[c1]):
+      keyMapProc = KEYMAP[KEYNAMES[c1]]
+      keyMapProc(ed)
     else:
       # Assuming unhandled two-values escape sequence; do nothing.
       if esc:
@@ -1002,9 +991,34 @@ when isMainModule:
   #      quit(0)
   #
   #testChar()
+
+  type InfoError = object of MinlineError
+
+  KEYMAP["ctrl+o"] = proc(ed: var Editor) {.gcsafe.} =
+    #echo "\nindex: $1 pos: $2 row: $3 col: $4\ntext: $5 " % [$ed.index, $ed.position, $ed.entry.index, $ed.entry.linepos, $ed.entry.text]
+    #echo "\n\n\n\n---" & $ed.entry.lines.len & "---"
+    raise newException(InfoError, "")
   proc testLineEditor() =
     var ed = initEditor(historyFile = "")
+    ed.newLineCallback = proc(ed: var Editor, prompt: string, c: int): string =
+      let s = " ".repeat(prompt.len)
+      let lpar = ed.entry.text.count("(")
+      let rpar = ed.entry.text.count(")")
+      if (lpar != rpar):
+        stdout.write("\n"&s)
+        return ""
+      else:
+        # TODO: Not working, not printing full text when 
+        stdout.flushFile()
+        ed.historyAdd()
+        ed.historyFlush()
+        let text = ed.entry.text
+        ed.entry = initEntry()
+        return text
     while true:
-      echo "---", ed.readLine("-> "), "---"
+      try:
+        echo "\n=> ----", ed.readLine("-> "), "----"
+      except InfoError:
+        discard
 
   testLineEditor()
