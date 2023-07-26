@@ -169,22 +169,24 @@ proc `position=`(ed: var Editor, value: int) =
 proc boe(en: Entry): int =
   return 0
 
+proc bol(en: Entry): int =
+  return 0
+
 proc eoe(en: Entry): int =
-  return en.line.len-1
+  return en.lines.len-1
 
 proc changeLine*(ed: var Editor, entry: Entry)
 
 proc add(h: var History, entry: Entry, force = false) 
 
-proc full(entry: Entry): bool =
-  return entry.position >= entry.text.len
+proc atLineEnd(entry: Entry): bool =
+  return entry.col >= entry.line.len
 
 # Reviewed
 proc backward*(ed: var Editor) =
   ## Move the cursor backward by **n** characters on the current line (unless the beginning of the line is reached).
-  if ed.entry.row <= ed.bol:
-    var col = ed.entry.col
-    if ed.entry.col <= ed.boe:
+  if ed.entry.col <= ed.bol:
+    if ed.entry.row <= ed.boe:
       return
     else:
      let prevLine = ed.entry.lines[ed.entry.row-1]
@@ -199,32 +201,44 @@ proc backward*(ed: var Editor) =
 # Reviewed
 proc forward*(ed: var Editor) =
   ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
-  if ed.entry.col >= ed.eol:
+  if ed.entry.col >= ed.entry.line.len:
     if ed.entry.row >= ed.eoe:
       return
     else:
       let nextLine = ed.entry.lines[ed.entry.row+1]
-      # go forwaed to next line
+      # go forward to next line
       stdout.cursorDown()
-      stdout.cursorBackward(nextLine.len)
+      stdout.cursorBackward(ed.entry.col)
       ed.entry.row.inc()
   else:
     stdout.cursorForward()
   ed.entry.position.inc()
 
-proc upward*(ed: var Editor, n = 1) =
-  if ed.entry.row - n < 0:
+proc upward*(ed: var Editor) =
+  if ed.entry.row <= ed.boe:
     return
-  let col = ed.entry.col
-  # Go to start of line
-  stdout.cursorBackward(col)
-  ed.entry.position.dec(col)
-  for i in countdown(ed.entry.row, ed.entry.row-n-1):
-    ed.entry.position.dec(ed.entry.lines[i].len)
-  # Restore old position
-  let newPos = min(col, ed.entry.lines[ed.entry.row-n].len)
-  stdout.cursorForward(newPos)
-  ed.entry.position.inc(newPos)
+  else:
+    stdout.cursorUp()
+    let prevLine = ed.entry.lines[ed.entry.row-1]
+    if prevLine.len < ed.entry.col:
+      stdout.cursorBackward(ed.entry.col - prevLine.len)
+      ed.entry.position = ed.entry.position - ed.entry.col - 1
+    else:
+      ed.entry.position = ed.entry.position - ed.entry.col - 1 - (prevLine.len - ed.entry.col)
+    ed.entry.row.dec()
+
+proc downward*(ed: var Editor) =
+  if ed.entry.row >= ed.eoe:
+    return
+  else:
+    stdout.cursorDown()
+    let nextLine = ed.entry.lines[ed.entry.row+1]
+    if nextLine.len < ed.entry.col:
+      stdout.cursorBackward(ed.entry.col - nextLine.len)
+      ed.entry.position = ed.entry.position + (ed.entry.line.len - ed.entry.col) + 1 + nextLine.len
+    else:
+      ed.entry.position = ed.entry.position + (ed.entry.line.len - ed.entry.col) + 1 + ed.entry.col
+    ed.entry.row.inc()
 
 proc initEntry*(text = "", row = 0, position = 0): Entry =
   result.lines = newSeq[string](0)
@@ -258,10 +272,11 @@ proc add(h: var History, entry: Entry, force = false) =
   else:
     h.queue.addLast entry
 
-proc toEnd(entry: Entry): string =
-  if entry.empty:
+
+proc fromStart(en: Entry): string =
+  if en.empty:
     return ""
-  return entry.text[entry.position..entry.eoe]
+  return en.line[en.bol .. en.col-1]
 
 proc historyAdd*(ed: var Editor, force = false) =
   ## Adds the current editor line to the history. If **force** is set to **true**, the line will be added even if it's blank.
@@ -305,22 +320,6 @@ proc toEnd(line: Line): string =
   if line.empty:
     return ""
   return line.text[line.position..line.last]
-
-# Reviewed
-proc backward*(ed: var LineEditor, n = 1) =
-  ## Move the cursor backward by **n** characters on the current line (unless the beginning of the line is reached).
-  if ed.line.position <= 0:
-    return
-  stdout.cursorBackward(n)
-  ed.line.position = ed.line.position - n
-
-# Reviewed
-proc forward*(ed: var LineEditor, n = 1) =
-  ## Move the cursor forward by **n** characters on the current line (unless the beginning of the line is reached).
-  if ed.line.full:
-    return
-  stdout.cursorForward(n)
-  ed.line.position += n
 
 # Reviewed
 proc `[]`(q: Deque[string], pos: int): string =
@@ -367,37 +366,62 @@ proc next(h: var LineHistory): string =
 
 # Public API
 
-proc deletePrevious*(ed: var LineEditor) =
+proc deletePrevious*(ed: var Editor) =
   ## Move the cursor to the left by one character (unless at the beginning of the line) and delete the existing character, if any.
-  if ed.line.position <= 0:
+  if ed.entry.position <= ed.bol:
     return
-  if not ed.line.empty:
-    if ed.line.full:
-      stdout.cursorBackward
+  if not ed.entry.empty:
+    let col = ed.entry.col # Save original position here because it gets changed.
+    if ed.entry.atLineEnd:
+      ed.backward()
       putchr(32)
-      stdout.cursorBackward
-      ed.line.position.dec
-      ed.line.text = ed.line.text[0..ed.line.last-1]
+      if col <= 0:
+        # Go back to previous line
+        discard ed.entry.lines.pop()
+        ed.backward() 
+        stdout.cursorForward()
+        ed.entry.position.inc
+      else:
+        ed.entry.line = ed.entry.line[0..ed.entry.line.len-2]
+      stdout.cursorBackward()
     else:
-      let rest = ed.line.toEnd & " "
-      ed.backward
-      for i in rest:
-        putchr i.ord.cint
-      ed.line.text = ed.line.fromStart & ed.line.text[
-          ed.line.position+1..ed.line.last]
-      stdout.cursorBackward(rest.len)
+      if col <= 0:
+        # Go back to previous line
+        let oldLine = ed.entry.lines.pop()
+        # Clear bottom line
+        for i in oldLine:
+          putchr ' '.cint
+        stdout.cursorBackward(oldLine.len)
+        ed.backward()
+        # Print bottom line that went up
+        for i in oldLine:
+          putchr i.ord.cint
+        ed.entry.line = ed.entry.line & oldLine
+        stdout.cursorBackward(oldLine.len)
+      else:
+        # Middle of line
+        let rest = ed.entry.line[ed.entry.col..ed.entry.line.len-1] & " "
+        var newText = ed.entry.line
+        ed.backward()
+        newText.delete(ed.entry.col..ed.entry.col)
+        for i in rest:
+          putchr i.ord.cint
+        ed.entry.line = newText
+        stdout.cursorBackward(rest.len)
+        # TODO: removing newlines causes all rows to shift up
 
-proc deleteNext*(ed: var LineEditor) =
+proc deleteNext*(ed: var Editor) =
   ## Move the cursor to the right by one character (unless at the end of the line) and delete the existing character, if any.
-  if not ed.line.empty:
-    if not ed.line.full:
-      let rest = ed.line.toEnd[1..^1] & " "
-      for c in rest:
-        putchr c.ord.cint
-      stdout.cursorBackward(rest.len)
-      ed.line.text = ed.line.fromStart & ed.line.toEnd[1..^1]
+  ed.forward()
+  ed.deletePrevious()
 
-# Reviewed
+
+     
+
+# To Remove
+proc backward(ed: var LineEditor, n=1) =
+  discard 
+
 proc printChar*(ed: var LineEditor, c: int) =
   ## Prints the character **c** to the current line. If in the middle of the line, the following characters are shifted right or replaced depending on the editor mode.
   if ed.line.full:
@@ -586,7 +610,8 @@ proc completeLine*(ed: var LineEditor): int =
   var matches = compl.filterIt(it.toLowerAscii.startsWith(word.toLowerAscii))
   if ed.line.fromStart.len > 0 and matches.len > 0:
     for i in 0..word.len-1:
-      ed.deletePrevious
+      discard # REVIEW
+      #ed.deletePrevious
   var n = 0
   if matches.len > 0:
     ed.addToLineAtPosition(matches[0])
@@ -598,7 +623,8 @@ proc completeLine*(ed: var LineEditor): int =
     if n < matches.len:
       let diff = ed.line.position - position
       for i in 0.countup(diff-1 + word.len):
-        ed.deletePrevious
+        discard # REVIEW
+        #ed.deletePrevious
       ed.addToLineAtPosition(matches[n])
       ch = getchr()
     else:
@@ -747,17 +773,17 @@ var KEYMAP* {.threadvar.}: CritBitTree[KeyCallBack] ## The following key mapping
  ## * home: **goToStart**
  ## * end: **goToEnd**
 
-# KEYMAP["backspace"] = proc(ed: var Editor) {.gcsafe.} =
-#   ed.deletePrevious()
-# KEYMAP["delete"] = proc(ed: var Editor) {.gcsafe.} =
-#   ed.deleteNext()
+KEYMAP["backspace"] = proc(ed: var Editor) {.gcsafe.} =
+  ed.deletePrevious()
+KEYMAP["delete"] = proc(ed: var Editor) {.gcsafe.} =
+  ed.deleteNext()
 KEYMAP["insert"] = proc(ed: var Editor) {.gcsafe.} =
   if ed.mode == modeInsert:
     ed.mode = modeReplace
   else:
     ed.mode = modeInsert
 KEYMAP["down"] = proc(ed: var Editor) {.gcsafe.} =
-  discard #todo
+  ed.downward()
 KEYMAP["up"] = proc(ed: var Editor) {.gcsafe.} =
   ed.upward()
 # KEYMAP["ctrl+n"] = proc(ed: var Editor) {.gcsafe.} =
@@ -834,21 +860,20 @@ proc changeLine*(ed: var Editor, entry: Entry) =
 
 proc printChar*(ed: var Editor, c: int) =
   ## Prints the character **c** to the current line. If in the middle of the line, the following characters are shifted right or replaced depending on the editor mode.
-  if ed.entry.full:
+  if ed.entry.atLineEnd:
     putchr(c.cint)
     ed.entry.line = ed.entry.line & c.chr
     ed.entry.position += 1
   else:
     if ed.mode == modeInsert:
       putchr(c.cint)
-      let rest = ed.entry.toEnd
-      ed.entry.lines[ed.entry.row].insert($c.chr, ed.entry.position)
+      let rest = ed.entry.line[ed.entry.col .. ed.entry.line.len-1]
+      ed.entry.lines[ed.entry.row].insert($c.chr, ed.entry.col)
       ed.entry.position += 1
       for j in rest:
         putchr(j.ord.cint)
-        ed.entry.position += 1
-      for i in countUp(0, rest.len):
-        ed.backward()
+      for i in countUp(0, rest.len-1):
+        stdout.cursorBackward()
     else:
       putchr(c.cint)
       ed.entry.lines[ed.entry.row][ed.entry.position] = c.chr
@@ -886,9 +911,8 @@ proc readLine*(ed: var Editor, prompt = "", hidechars = false): string {.gcsafe.
         let text = ed.entry.text
         ed.entry = initEntry()
         return text
-    # TODO
-    #elif c1 in {8, 127}:
-    #  KEYMAP["backspace"](ed)
+    elif c1 in {8, 127}:
+      KEYMAP["backspace"](ed)
     elif c1 in PRINTABLE:
       if hidechars:
         putchr('*'.ord.cint)
@@ -916,8 +940,8 @@ proc readLine*(ed: var Editor, prompt = "", hidechars = false): string {.gcsafe.
       #  KEYMAP["home"](ed)
       #elif s == KEYSEQS["end"]:
       #  KEYMAP["end"](ed)
-      #elif s == KEYSEQS["delete"]:
-      #  KEYMAP["delete"](ed)
+      elif s == KEYSEQS["delete"]:
+        KEYMAP["delete"](ed)
       #elif s == KEYSEQS["insert"]:
       #  KEYMAP["insert"](ed)
       elif c2 == 91:
@@ -971,7 +995,8 @@ when isMainModule:
   type InfoError = object of MinlineError
 
   KEYMAP["ctrl+o"] = proc(ed: var Editor) {.gcsafe.} =
-    echo "\nindex: $1 pos: $2 row: $3 col: $4 len: $5 " % [$ed.index, $ed.position, $ed.entry.row, $ed.entry.col, $ed.entry.text.len]
+    echo "\nindex: $1 pos: $2 row: $3 col: $4 len: $5 lines: $6" % [
+      $ed.index, $ed.position, $ed.entry.row, $ed.entry.col, $ed.entry.text.len, $ed.entry.lines]
     ed.entry = initEntry()
     #echo "\n\n\n\n---" & $ed.entry.lines.len & "---"
     raise newException(InfoError, "")
