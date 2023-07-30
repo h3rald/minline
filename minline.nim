@@ -62,7 +62,7 @@ type
   Key* = int ## The ASCII code of a keyboard key.
   KeySeq* = seq[Key] ## A sequence of one or more Keys.
   KeyCallback* = proc(ed: var LineEditor) {.closure, gcsafe.} ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
-  LineError* = ref Exception ## A generic nimline error.
+  LineError* = ref Exception ## A generic minline error.
   LineEditorError* = ref Exception ## An error occured in the LineEditor.
   LineEditorMode* = enum ## The *mode* a LineEditor operates in (insert or replace).
     mdInsert
