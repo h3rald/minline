@@ -61,7 +61,7 @@ else:
 type
   Key* = int ## The ASCII code of a keyboard key.
   KeySeq* = seq[Key] ## A sequence of one or more Keys.
-  KeyCallback* = proc(ed: var LineEditor) {.closure, gcsafe.} ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
+  KeyCallback* = proc(ed: var LineEditor) {.closure.} ## A proc that can be bound to a key or a key sequence to access line editing functionalities.
   LineError* = ref Exception ## A generic minline error.
   LineEditorError* = ref Exception ## An error occured in the LineEditor.
   LineEditorMode* = enum ## The *mode* a LineEditor operates in (insert or replace).
@@ -77,7 +77,7 @@ type
     queue: Deque[string] 
     max: int 
   LineEditor* = object ## An object representing a line editor, used to process text typed in the terminal.
-    completionCallback*: proc(ed: LineEditor): seq[string] {.closure, gcsafe.}
+    completionCallback*: proc(ed: LineEditor): seq[string] {.closure.}
     history: LineHistory 
     line: Line 
     mode: LineEditorMode 
@@ -533,49 +533,49 @@ var KEYMAP* {.threadvar.}: CritBitTree[KeyCallBack] ## The following key mapping
 ## * home: **goToStart**
 ## * end: **goToEnd**
 
-KEYMAP["backspace"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["backspace"] = proc(ed: var LineEditor) =
   ed.deletePrevious()
-KEYMAP["delete"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["delete"] = proc(ed: var LineEditor) =
   ed.deleteNext()
-KEYMAP["insert"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["insert"] = proc(ed: var LineEditor) =
   if ed.mode == mdInsert:
     ed.mode = mdReplace
   else:
     ed.mode = mdInsert
-KEYMAP["down"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["down"] = proc(ed: var LineEditor) =
   ed.historyNext()
-KEYMAP["up"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["up"] = proc(ed: var LineEditor) =
   ed.historyPrevious()
-KEYMAP["ctrl+n"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+n"] = proc(ed: var LineEditor) =
   ed.historyNext()
-KEYMAP["ctrl+p"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+p"] = proc(ed: var LineEditor) =
   ed.historyPrevious()
-KEYMAP["left"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["left"] = proc(ed: var LineEditor) =
   ed.back()
-KEYMAP["right"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["right"] = proc(ed: var LineEditor) =
   ed.forward()
-KEYMAP["ctrl+b"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+b"] = proc(ed: var LineEditor) =
   ed.back()
-KEYMAP["ctrl+f"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+f"] = proc(ed: var LineEditor) =
   ed.forward()
-KEYMAP["ctrl+c"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+c"] = proc(ed: var LineEditor) =
   quit(0)
-KEYMAP["ctrl+d"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+d"] = proc(ed: var LineEditor) =
   quit(0)
-KEYMAP["ctrl+u"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+u"] = proc(ed: var LineEditor) =
   ed.clearLine()
-KEYMAP["ctrl+a"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+a"] = proc(ed: var LineEditor) =
   ed.goToStart()
-KEYMAP["ctrl+e"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["ctrl+e"] = proc(ed: var LineEditor) =
   ed.goToEnd()
-KEYMAP["home"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["home"] = proc(ed: var LineEditor) =
   ed.goToStart()
-KEYMAP["end"] = proc(ed: var LineEditor) {.gcsafe.}=
+KEYMAP["end"] = proc(ed: var LineEditor) =
   ed.goToEnd()
 
-var keyMapProc {.threadvar.}: proc(ed: var LineEditor) {.gcsafe.}
+var keyMapProc {.threadvar.}: proc(ed: var LineEditor) 
 
-proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string {.gcsafe.} =
+proc readLine*(ed: var LineEditor, prompt="", hidechars = false): string  =
   ## High-level proc to be used instead of **stdin.readLine** to read a line from standard input using the specified **LineEditor** object.
   ##
   ## Note that:
