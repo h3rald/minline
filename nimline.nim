@@ -1,2 +1,0 @@
-import ./minline
-export minline
