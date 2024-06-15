@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.1"
+version       = "0.1.2"
 author        = "Fabio Cevasco"
 description   = "A line editing library in pure Nim"
 license       = "MIT"
