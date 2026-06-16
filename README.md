@@ -1,3 +1,5 @@
+**Important** This project was moved to [sourcehut](https://git.sr.ht/~h3rald/h3rald) on 2026-06-16.
+
 # minline
 
 A line editing library in pure Nim designed to be easy to use and provide a minimal (but useful) set of features to build interactive CLI applications.
