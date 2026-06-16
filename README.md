@@ -1,4 +1,4 @@
-**Important** This project was moved to [sourcehut](https://git.sr.ht/~h3rald/h3rald) on 2026-06-16.
+**Important** This project was moved to [sourcehut](https://git.sr.ht/~h3rald/minline) on 2026-06-16.
 
 # minline
 
